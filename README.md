@@ -1,3 +1,22 @@
+Experimental, locally self-hosted solution to store information of your interest from the internet articles you browse, with the possibility to enhance them with your custom thoughts.
+
+
+The website content is captured via the browser extension (Chrome/Firefox) and Crawl4AI engine, shortened and summarized using LLM API call. Then it's saved to the OpenSearch database, vectorized and pre-selected tags are applied. The search engine uses combination of keyword and semantic search. The app also contains the MCP server with search and tagging tools, enabling connection to any chat interface you use. 
+
+The app uses manually added system of tags, which you should manually specify before using - e.g. categories to which you would like to split the information into. The article is then automatically tagged at capture.  Each article is versioned by the date it was captured. The search engine then enables for selecting the relevant information by date. 
+
+AI usage in this app - Each capture uses single LLM API call to summarize the information for storing, and then another one to construct the vector for semantic search. Your custom OpenAI API key has to be added to the env variables once running locally. 
+
+### Possible next development steps:
+- enhancing UI of the taxonomy and search interface so that it clearer,
+- adding the possibility to modify the system prompt at the extension input,
+- hosting of OpenSearch db and the app container in cloud.
+
+
+
+
+
+
 # Knowledge Base
 
 A personal, self-hosted knowledge base. Web pages you find interesting are captured (from a browser extension, the web UI or by URL), summarised by an LLM, tagged against a taxonomy you control, and kept with full history in OpenSearch so you can search and re-process them later. You can also write your own thoughts straight into it; they are tagged and searched the same way.
