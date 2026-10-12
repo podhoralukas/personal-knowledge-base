@@ -1,0 +1,61 @@
+[project]
+name = "kb"
+version = "2.0.0a0"
+description = "Personal knowledge base: capture, summarise, tag and version web content."
+requires-python = "~=3.12.0"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "crawl4ai>=0.9.0,<0.10",
+    "fastapi>=0.115",
+    "feedparser>=6.0.0",
+    "jinja2>=3.1",
+    "mcp>=1.28,<2",
+    "openai>=1.0.0,<3",
+    "opensearch-py>=2.4.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.30",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["kb*"]
+
+[tool.setuptools.package-data]
+kb = ["templates/*.html", "static/*"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = [
+    "B",   # flake8-bugbear
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+ignore = ["B904", "E402", "E501", "E721", "E722"]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*" = ["B011"]
+
+[tool.ty.environment]
+python-version = "3.12"

@@ -1,0 +1,9 @@
+<article class="item">
+  <h2><a href="/ui/items/{{ item.id }}">{{ item.title }}</a></h2>
+  <p class="meta">
+    {% if item.media_type == "thought" %}<span class="kind-badge">thought</span>{% else %}{{ item.original_url|domain }}{% endif %}
+    · saved {{ item.first_captured_at|when }}
+  </p>
+  {% include "_tags.html" %}
+  <p>{{ (item.text if item.media_type == "thought" else item.summary)|truncate(300) }}</p>
+</article>

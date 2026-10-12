@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ q ~ " · " if q }}Search · Knowledge Base{% endblock %}
+{% block content %}
+<form class="search" method="get" action="/ui/search">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search by keywords or meaning" aria-label="Search" autofocus>
+  <select name="tag" aria-label="Limit to tag">
+    <option value="">All tags</option>
+    {% for path in tags %}<option value="{{ path }}"{% if path == tag %} selected{% endif %}>{{ path }}</option>{% endfor %}
+  </select>
+  <button>Search</button>
+  {% include "_kind.html" %}
+  {% include "_dates.html" %}
+</form>
+
+{% if results is not none %}
+  {% if not results.semantic %}
+  <p class="notice">The query could not be embedded, so these are keyword matches only.</p>
+  {% endif %}
+  <p class="muted">{{ results.items|length }} result{{ "s" if results.items|length != 1 }}{% if tag %} under <span class="tag">{{ tag }}</span>{% endif %}</p>
+  {% for item in results.items %}
+    {% include "_item.html" %}
+  {% else %}
+  <p class="empty">Nothing matches.</p>
+  {% endfor %}
+{% endif %}
+{% endblock %}

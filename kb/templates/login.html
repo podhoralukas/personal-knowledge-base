@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% set hide_nav = true %}
+{% block title %}Log in · Knowledge Base{% endblock %}
+{% block content %}
+<form class="login" method="post" action="/ui/login">
+  <h1>Log in</h1>
+  <p class="muted">Paste the <code>API_TOKEN</code> from the server's <code>.env</code>.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <input type="password" name="token" aria-label="Token" autocomplete="current-password" required autofocus>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button>Log in</button>
+</form>
+{% endblock %}

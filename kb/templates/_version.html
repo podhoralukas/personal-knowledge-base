@@ -1,0 +1,31 @@
+<dl class="version">
+  <dt>Version</dt><dd><code>{{ v.id }}</code></dd>
+  {% if v.kind == "thought" %}
+  {% if v.title %}<dt>Title</dt><dd>{{ v.title }}</dd>{% endif %}
+  <dt>Text</dt><dd class="note">{{ v.text }}</dd>
+  {% else %}
+  <dt>URL</dt><dd>{{ v.original_url }}</dd>
+  {% endif %}
+  <dt>Content hash</dt><dd><code>{{ v.content_hash[:16] }}</code></dd>
+  {% if v.note %}<dt>Note</dt><dd class="note">{{ v.note }}</dd>{% endif %}
+  {% if v.error %}<dt>Error</dt><dd class="error">{{ v.error }}</dd>{% endif %}
+  {% set e = v.enrichment %}
+  {% if e and v.kind == "thought" %}
+  <dt>Embedded by</dt><dd>{{ e.embedding_model }}{% if e.reused_from %} · reused from <code>{{ e.reused_from }}</code>{% endif %}</dd>
+  {% elif e %}
+  <dt>Title</dt><dd>{{ e.title }}</dd>
+  <dt>Summary</dt><dd>{{ e.summary }}</dd>
+  {% if e.key_points %}<dt>Key points</dt><dd><ul>{% for p in e.key_points %}<li>{{ p }}</li>{% endfor %}</ul></dd>{% endif %}
+  <dt>Published</dt><dd>{{ e.published_date or "—" }}</dd>
+  <dt>Language</dt><dd>{{ e.language or "—" }}</dd>
+  <dt>Summary by</dt>
+  <dd>{{ e.model }} · prompt {{ e.prompt_version }} · {{ e.embedding_model }}{% if e.reused_from %} · reused from <code>{{ e.reused_from }}</code>{% endif %}</dd>
+  {% if v.owner_tags %}
+  <dt>Tags</dt><dd>picked by you: {{ v.owner_tags|join(", ") }} (no tagging call)</dd>
+  {% else %}
+  <dt>Tags</dt><dd>{{ e.tags|join(", ") or "—" }}</dd>
+  <dt>Tags by</dt>
+  <dd>{{ e.tag_model or "—" }} · prompt {{ e.tag_prompt_version or "—" }} · taxonomy v{{ e.taxonomy_version }}</dd>
+  {% endif %}
+  {% endif %}
+</dl>

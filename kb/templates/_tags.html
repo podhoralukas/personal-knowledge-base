@@ -1,0 +1,5 @@
+{% if item.tags %}
+<ul class="tags">
+  {% for t in item.tags %}<li><a class="tag" href="{{ ('/ui?tag=' ~ t|urlencode)|keep_filters(request) }}">{{ t }}</a></li>{% endfor %}
+</ul>
+{% endif %}

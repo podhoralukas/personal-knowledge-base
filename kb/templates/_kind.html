@@ -1,0 +1,7 @@
+{# Kind selector for the enclosing GET form. #}
+<label class="kind">Kind
+  <select name="kind" aria-label="Limit to kind">
+    <option value="">Everything</option>
+    {% for k in kinds %}<option value="{{ k }}"{% if k == kind %} selected{% endif %}>{{ k|capitalize }}s</option>{% endfor %}
+  </select>
+</label>

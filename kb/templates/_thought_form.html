@@ -1,0 +1,13 @@
+{# Write or edit a Thought: `action`, `button`, and the `draft` to prefill (title, text, picked tags). #}
+<form class="thought" method="post" action="{{ action }}">
+  <input type="text" name="title" value="{{ draft.title }}" placeholder="Title (optional: the first line otherwise)" aria-label="Title">
+  <textarea name="text" rows="{{ [draft.text.count("\n") + 3, 6]|max }}" placeholder="What are you thinking?" aria-label="Text" required>{{ draft.text }}</textarea>
+  {% if tags %}
+  <label class="muted">Tags (none picked: tagged automatically)
+    <select name="tags" multiple size="{{ [tags|length, 5]|min }}">
+      {% for path in tags %}<option value="{{ path }}"{% if path in draft.tags %} selected{% endif %}>{{ path }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endif %}
+  <button>{{ button }}</button>
+</form>

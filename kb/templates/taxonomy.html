@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Taxonomy · Knowledge Base{% endblock %}
+
+{% macro node(n) %}
+{% set path = n.tag.path %}
+<li id="tag-{{ path }}">
+  <div class="node">
+    {% if n.children %}
+    <button type="button" class="toggle" aria-expanded="true" title="Collapse or expand {{ path }}"
+            onclick="const li = this.closest('li'); li.classList.toggle('collapsed'); this.setAttribute('aria-expanded', !li.classList.contains('collapsed'))">▾</button>
+    {% else %}<span class="toggle"></span>{% endif %}
+    <a class="tag" href="/ui?tag={{ path|urlencode }}" title="Items under {{ path }}">{{ n.tag.name }}</a>
+    <span class="count" title="Items under this tag, sub-tags included">{{ counts[path] }}</span>
+    {% if n.tag.description %}<span class="desc">{{ n.tag.description }}</span>{% endif %}
+    <span class="actions">
+      <details class="act">
+        <summary>+ sub-tag</summary>
+        <form method="post" action="/ui/taxonomy/tags">
+          <input type="text" name="path" value="{{ path }}/" aria-label="Path of the new sub-tag" required>
+          <input type="text" name="description" placeholder="Description (optional)" aria-label="Description">
+          <button>Add</button>
+        </form>
+      </details>
+      <details class="act">
+        <summary>edit</summary>
+        <form method="post" action="/ui/taxonomy/describe">
+          <input type="hidden" name="path" value="{{ path }}">
+          <input type="text" name="description" value="{{ n.tag.description }}" aria-label="Description of {{ path }}">
+          <button>Save</button>
+        </form>
+      </details>
+      <details class="act">
+        <summary>rename</summary>
+        <form method="post" action="/ui/taxonomy/rename">
+          <input type="hidden" name="path" value="{{ path }}">
+          <input type="text" name="new_path" value="{{ path }}" aria-label="New path for {{ path }}" required>
+          <button>Rename</button>
+          <p class="hint">Fixes spelling or moves the tag, with its sub-tags, in every item and version. For a new meaning, add a new tag.</p>
+        </form>
+      </details>
+      {% if path in deletable %}
+      <form class="inline" method="post" action="/ui/taxonomy/delete" onsubmit="return confirm('Delete the tag {{ path }}?')">
+        <input type="hidden" name="path" value="{{ path }}">
+        <button class="link delete">delete</button>
+      </form>
+      {% endif %}
+    </span>
+  </div>
+  {% if n.children %}
+  <ul>{% for child in n.children %}{{ node(child) }}{% endfor %}</ul>
+  {% endif %}
+</li>
+{% endmacro %}
+
+{% block content %}
+<h1>Taxonomy <span class="muted">v{{ version }}</span></h1>
+{% if done.added %}<p class="notice">Added <span class="tag">{{ done.added }}</span>. Items get it on their next capture or re-tag.</p>{% endif %}
+{% if done.described %}<p class="notice">Saved the description of <span class="tag">{{ done.described }}</span>.</p>{% endif %}
+{% if done.renamed %}<p class="notice">Renamed to <span class="tag">{{ done.renamed }}</span> everywhere.</p>{% endif %}
+{% if done.deleted %}<p class="notice">Deleted <span class="tag">{{ done.deleted }}</span>.</p>{% endif %}
+{% if retagging is not none %}<p class="notice">Re-tagging {{ retagging }} item{{ "s" if retagging != 1 }} in the background. Reload to see the new counts.</p>{% endif %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+<p class="muted"><a href="/ui/untagged">{{ untagged }} untagged item{{ "s" if untagged != 1 }}</a></p>
+{% if tree %}
+<ul class="tree">{% for n in tree %}{{ node(n) }}{% endfor %}</ul>
+{% else %}
+<p class="empty">No tags yet. Add the first one below.</p>
+{% endif %}
+
+<form class="add-tag" method="post" action="/ui/taxonomy/tags">
+  <input type="text" name="path" value="{{ path or '' }}" placeholder="New top-level tag, e.g. science" aria-label="Tag path" required>
+  <input type="text" name="description" value="{{ description or '' }}" placeholder="Description (optional)" aria-label="Description">
+  <button>Add tag</button>
+</form>
+<p class="muted">Lowercase words joined by "/"; the parent must exist. A tag can be deleted only while no item uses it and it has no sub-tags.</p>
+
+<h2>Re-tag</h2>
+<p class="muted">A re-tag only adds tags; it never removes one. Each item is one LLM call.</p>
+{% if candidates %}
+<p>{{ candidates }} item{{ "s" if candidates != 1 }} could get one of the newest tags: untagged items, and items tagged with a parent of a new tag.</p>
+{% else %}
+<p class="muted">No item is waiting for the newest tags.</p>
+{% endif %}
+<div class="retag">
+  {% if candidates %}
+  <form method="post" action="/ui/taxonomy/retag" onsubmit="return confirm('Re-tag {{ candidates }} items? That is one LLM call each.')">
+    <button>Re-tag {{ candidates }}</button>
+  </form>
+  {% endif %}
+  {% if total %}
+  <form method="post" action="/ui/taxonomy/retag" onsubmit="return confirm('Re-tag all {{ total }} items? That is one LLM call each.')">
+    <input type="hidden" name="all" value="true">
+    <button class="secondary">Re-tag all {{ total }}</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

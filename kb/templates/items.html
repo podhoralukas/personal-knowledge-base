@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="capture" method="post" action="/ui/capture">
+  <input type="url" name="url" value="{{ url or '' }}" placeholder="https://… page to capture" aria-label="URL to capture" required>
+  <button>Capture</button>
+</form>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if not untagged %}
+<details class="write"{% if thought_error %} open{% endif %}>
+  <summary>✎ Write a thought</summary>
+  {% if thought_error %}<p class="error">{{ thought_error }}</p>{% endif %}
+  {% with action="/ui/thoughts", button="Save thought", draft=thought_draft or {"title": "", "text": "", "tags": []} %}
+  {% include "_thought_form.html" %}
+  {% endwith %}
+</details>
+{% endif %}
+
+<h1>
+  {% if tag %}Items under <span class="tag">{{ tag }}</span> <a class="clear" href="{{ '/ui'|keep_filters(request) }}" title="Show all items">×</a>
+  {% elif untagged %}Untagged items <a class="clear" href="{{ '/ui'|keep_filters(request) }}" title="Show all items">×</a>
+  {% else %}Items{% endif %}
+</h1>
+{% if untagged %}<p class="muted">No tag in the <a href="/ui/taxonomy">Taxonomy</a> fits these. Add one, then re-tag.</p>{% endif %}
+<form class="filters" method="get" action="{{ request.url.path }}">
+  {% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
+  {% include "_kind.html" %}
+  {% include "_dates.html" %}
+  <button class="secondary">Filter</button>
+</form>
+<p class="muted">{{ items|length }} item{{ "s" if items|length != 1 }}{% if saved and (saved.start or saved.end) %} saved {% if saved.start %}from {{ saved.start }} {% endif %}{% if saved.end %}to {{ saved.end }}{% else %}to today{% endif %}{% endif %}</p>
+
+{% for item in items %}
+{% include "_item.html" %}
+{% else %}
+<p class="empty">{% if tag %}No items under this tag.{% elif untagged %}Every item has a tag.{% elif kind %}No {{ kind }}s.{% else %}Nothing captured yet. Paste a URL or write a thought above.{% endif %}</p>
+{% endfor %}
+{% endblock %}

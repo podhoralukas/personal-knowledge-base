@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title if item else "Processing…" }} · Knowledge Base{% endblock %}
+{% block content %}
+<div id="item"{% if pending %} hx-get="/ui/items/{{ item_id }}" hx-trigger="every {{ poll }}" hx-select="#item" hx-swap="outerHTML"{% endif %}>
+  {% if item %}
+  {% set thought = item.media_type == "thought" %}
+  <h1>{{ item.title }}</h1>
+  <p class="meta">
+    {% if thought %}
+    <span class="kind-badge">thought</span>
+    · written {{ item.first_captured_at|when }}{% if item.captured_at != item.first_captured_at %} · edited {{ item.captured_at|when }}{% endif %}
+    {% else %}
+    <a href="{{ item.original_url }}" target="_blank" rel="noopener noreferrer">{{ item.original_url|domain }}</a>
+    · first captured {{ item.first_captured_at|when }} · current version {{ item.captured_at|when }}
+    {% endif %}
+  </p>
+  <ul class="tags editable">
+    {% for t in item.tags %}
+    <li>
+      <a class="tag{% if t in item.annotations.owner_tags %} owner{% endif %}" href="/ui?tag={{ t|urlencode }}"
+         title="{{ 'Added by you' if t in item.annotations.owner_tags else 'Chosen by the tagger' }}">{{ t }}</a>
+      <form method="post" action="/ui/items/{{ item_id }}/untag">
+        <input type="hidden" name="path" value="{{ t }}">
+        <button class="link untag" title="Remove {{ t }} from this item" aria-label="Remove {{ t }}">×</button>
+      </form>
+    </li>
+    {% endfor %}
+    {% if addable %}
+    <li>
+      <form class="add-owner-tag" method="post" action="/ui/items/{{ item_id }}/tags">
+        <select name="path" aria-label="Add a tag" required>
+          <option value="">+ tag…</option>
+          {% for path in addable %}<option value="{{ path }}">{{ path }}</option>{% endfor %}
+        </select>
+        <button class="secondary">Add</button>
+      </form>
+    </li>
+    {% endif %}
+  </ul>
+  {% if item.annotations.rejected_tags %}
+  <p class="meta rejected">Removed by you, never suggested again:
+    {% for t in item.annotations.rejected_tags %}
+    <span class="tag rejected">{{ t }}</span>
+    <form method="post" action="/ui/items/{{ item_id }}/allow">
+      <input type="hidden" name="path" value="{{ t }}">
+      <button class="link">allow again</button>
+    </form>
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if thought %}
+  {% if pending %}<p class="notice">Tagging and indexing this version. This page updates by itself.</p>
+  {% elif shown and shown.status == "failed" %}
+  <div class="notice">Not enriched: the tags and search by meaning still reflect an earlier version.
+    <form class="inline" method="post" action="/ui/items/{{ item_id }}/retry"><button class="link">Retry</button></form>
+  </div>
+  {% endif %}
+  <div class="thought-text note">{{ item.text }}</div>
+  <details class="thought-edit"{% if thought_draft is defined %} open{% endif %}>
+    <summary>edit</summary>
+    {% with action="/ui/items/" ~ item_id ~ "/thought", button="Save as new version",
+            draft=thought_draft if thought_draft is defined else {"title": shown.title if shown else "", "text": item.text, "tags": []} %}
+    {% include "_thought_form.html" %}
+    {% endwith %}
+  </details>
+  {% else %}
+  {% if pending %}<p class="notice">A new capture is being processed. This page updates by itself.</p>{% endif %}
+  <p>{{ item.summary }}</p>
+  {% if item.key_points %}
+  <h2>Key points</h2>
+  <ul>{% for p in item.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
+  {% endif %}
+  <h2>Note</h2>
+  {% set note = draft if draft is defined else item.annotations.notes %}
+  {% if item.annotations.notes %}<p class="note">{{ item.annotations.notes }}</p>{% endif %}
+  <details class="note-edit"{% if draft is defined %} open{% endif %}>
+    <summary>{{ "edit" if item.annotations.notes else "+ add a note" }}</summary>
+    <form method="post" action="/ui/items/{{ item_id }}/notes">
+      <textarea name="notes" rows="{{ [note.count("\n") + 3, 6]|max }}" aria-label="Note">{{ note }}</textarea>
+      <button>Save</button>
+      <span class="muted">Only for you: never sent to the LLM. Empty deletes the note.</span>
+    </form>
+  </details>
+  {% endif %}
+  {% elif pending %}
+  <h1>Processing…</h1>
+  <p class="notice">{{ versions[0].original_url }} is being summarised and tagged. This page updates by itself.</p>
+  {% else %}
+  <h1>Capture failed</h1>
+  <p class="error">{{ versions[0].original_url }} could not be enriched. Open a version below for the error.</p>
+  {% endif %}
+
+  <h2>Versions</h2>
+  <table class="versions">
+    <thead><tr><th>When</th><th>Channel</th><th>Status</th><th>Tags</th><th></th></tr></thead>
+    <tbody>
+      {% for v in versions %}
+      <tr{% if item and v.id == item.current_version_id %} class="current"{% endif %}>
+        <td><button class="link" hx-get="/ui/versions/{{ v.id|urlencode }}" hx-target="#v-{{ loop.index }}">{{ v.captured_at|when }}</button></td>
+        <td>{{ v.channel }}</td>
+        <td><span class="status {{ v.status }}">{{ v.status }}</span></td>
+        <td>
+          {{ v.enrichment.tags|join(", ") if v.enrichment else "" }}
+          {% if v.owner_tags %}{{ v.owner_tags|join(", ") }} <span class="muted">(picked)</span>{% endif %}
+        </td>
+        <td>
+          {% if versions|length > 1 %}
+          <form class="inline" method="post" action="/ui/versions/{{ v.id|urlencode }}/delete"
+                onsubmit="return confirm('Delete this version? This cannot be undone.')">
+            <button class="link delete" title="Delete this version">delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      <tr class="detail"><td colspan="5" id="v-{{ loop.index }}"></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form class="delete" method="post" action="/ui/items/{{ item_id }}/delete"
+        onsubmit="return confirm('Delete this item and all its versions? This cannot be undone.')">
+    <button class="danger">Delete item</button>
+  </form>
+</div>
+{% endblock %}

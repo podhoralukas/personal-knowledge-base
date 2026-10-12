@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Knowledge Base",
+  "version": "0.1.0",
+  "description": "Capture the page you are reading into your Knowledge Base.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Capture to Knowledge Base"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+K" }
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": { "id": "kb@localhost", "strict_min_version": "128.0" }
+  }
+}

@@ -1,0 +1,12 @@
+{# Date fields for the enclosing GET form. A preset fills both fields first, then submits the form. #}
+<div class="dates">
+  <label>Saved from <input type="date" name="from" value="{{ dates.from }}"></label>
+  <label>to <input type="date" name="to" value="{{ dates.to }}" title="Empty: up to today"></label>
+  <span class="quick">
+    {% for label, (start, end) in date_presets.items() %}
+    <button class="link" data-from="{{ start }}" data-to="{{ end }}"
+            onclick="this.form.elements.from.value = this.dataset.from; this.form.elements.to.value = this.dataset.to">{{ label }}</button>
+    {% endfor %}
+  </span>
+</div>
+{% if date_error %}<p class="error">{{ date_error }}</p>{% endif %}

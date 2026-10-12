@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="style.css">
+  <script src="popup.js" defer></script>
+</head>
+<body class="popup">
+  <header>
+    <h1>Knowledge Base</h1>
+    <a id="open-kb" href="#" title="Open the Knowledge Base in a new tab">Open ↗</a>
+  </header>
+  <p id="title"></p>
+  <fieldset id="tags" hidden>
+    <legend>Tags <span class="hint">none picked: chosen automatically</span></legend>
+    <div id="tag-list"></div>
+  </fieldset>
+  <label for="note">Note <span class="hint">optional, only for you · Ctrl+Enter captures</span></label>
+  <textarea id="note" rows="3" maxlength="20000"></textarea>
+  <button id="capture">Capture</button>
+  <p id="status"></p>
+</body>
+</html>
