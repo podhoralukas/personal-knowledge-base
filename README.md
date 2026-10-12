@@ -77,14 +77,6 @@ python3.12 -m venv .venv
 ./setup.sh
 ```
 
-The script installs the version ranges from `pyproject.toml`. To install the exact versions the project is tested with instead, use the pinned files:
-
-```bash
-.venv/bin/pip install -r requirements-dev.txt     # or requirements.txt without pytest and ruff
-.venv/bin/pip install -e . --no-deps
-docker compose up -d
-```
-
 **4. Start the app**
 
 ```bash
