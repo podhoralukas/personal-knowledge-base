@@ -221,3 +221,6 @@ __marimo__/
 
 # Browser extension
 node_modules/
+
+# Internal design log, kept local
+docs/plan.md

@@ -1,6 +1,6 @@
 # Tagging model
 
-How an Item gets its tags, and who may change them. Decided 2026-10-05 (D27, D28 in [plan.md](plan.md)); terms in [CONTEXT.md](../CONTEXT.md).
+How an Item gets its tags, and who may change them. Decided 2026-10-05; terms in [CONTEXT.md](../CONTEXT.md).
 
 ## Two sources, one result
 

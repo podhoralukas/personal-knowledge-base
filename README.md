@@ -1,6 +1,6 @@
 Experimental, locally self-hosted solution to store information of your interest from the internet articles you browse, with the possibility to enhance them with your custom thoughts.
 
-The problem which I tried to solve for myself - I read lots of super-interesting internet content and articles, but after a week or so, I just don't remember where it was :).  Thus, by hitting the single button in the browser extension, the article gets summarized and saved into my personal "diary", and gets sorted into the relevant category. The single single keyword or sentence in search box then finds it for me. I can also use my personal AI assistant for that. 
+The problem which I tried to solve for myself - I read lots of super-interesting internet content and articles, but after a week or so, I just don't remember where it was :).  Thus, by hitting the single button in the browser extension, the article gets summarized and saved into my personal "diary", and gets sorted into the relevant category. The single keyword or sentence in search box then finds it for me. I can also use my personal AI assistant for that. 
 
 
 The website content is captured via the browser extension (Chrome/Firefox) and Crawl4AI engine, shortened and summarized using LLM API call. Then it's saved to the OpenSearch database, vectorized and pre-selected tags are applied. The search engine uses combination of keyword and semantic search. The app also contains the MCP server with search and tagging tools, enabling connection to any chat interface you use. 
@@ -9,16 +9,16 @@ The app uses manually added system of tags, which you should manually define bef
 
 Each capture uses single LLM API call to summarize the information for storing, and then another one to construct the vector for semantic search. Your custom OpenAI API key has to be added to the env variables once running locally. 
 
-Extent of use of AI to create this app - Claude Code was used to write the code. The domain design and and architectural decisions were done by myself. 
+Extent of use of AI to create this app - Claude Code was used to write the code. The domain design and architectural decisions were done by myself. 
 
 ### Possible next development steps:
-- enhancing UI of the taxonomy and search interface so that it clearer,
+- enhancing UI of the taxonomy and search interface so that it is clearer,
 - adding the possibility to modify the system prompt at the extension input,
 - hosting of OpenSearch db and the app container in cloud.
 
+---
 
-
-## AI-generated description of app setup  below:
+*The app setup description below is AI-generated.*
 
 ## How it works
 
@@ -189,7 +189,6 @@ This is a single-user app meant to run on your own machine.
 
 ### Design documents
 
-- [docs/plan.md](docs/plan.md): design and decisions
 - [CONTEXT.md](CONTEXT.md): vocabulary (Item, Version, Capture, Thought, Tag, ...)
 - [docs/tagging.md](docs/tagging.md): how tags are proposed, kept and rejected
 - [docs/adr/](docs/adr/): architecture decision records
