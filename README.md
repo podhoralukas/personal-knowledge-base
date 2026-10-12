@@ -1,11 +1,15 @@
 Experimental, locally self-hosted solution to store information of your interest from the internet articles you browse, with the possibility to enhance them with your custom thoughts.
 
+The problem which I tried to solve for myself - I read lots of super-interesting internet content and articles, but after a week or so, I just don't remember where it was :).  Thus, by hitting the single button in the browser extension, the article gets summarized and saved into my personal "diary", and gets sorted into the relevant category. The single single keyword or sentence in search box then finds it for me. I can also use my personal AI assistant for that. 
+
 
 The website content is captured via the browser extension (Chrome/Firefox) and Crawl4AI engine, shortened and summarized using LLM API call. Then it's saved to the OpenSearch database, vectorized and pre-selected tags are applied. The search engine uses combination of keyword and semantic search. The app also contains the MCP server with search and tagging tools, enabling connection to any chat interface you use. 
 
-The app uses manually added system of tags, which you should manually specify before using - e.g. categories to which you would like to split the information into. The article is then automatically tagged at capture.  Each article is versioned by the date it was captured. The search engine then enables for selecting the relevant information by date. 
+The app uses manually added system of tags, which you should manually define before using (the tags can be also added later)- e.g. categories to which you would like to split the information into. The article is then automatically tagged at capture.  Each article is versioned by the date it was captured. The search engine then enables for selecting the relevant information by date. 
 
-AI usage in this app - Each capture uses single LLM API call to summarize the information for storing, and then another one to construct the vector for semantic search. Your custom OpenAI API key has to be added to the env variables once running locally. 
+Each capture uses single LLM API call to summarize the information for storing, and then another one to construct the vector for semantic search. Your custom OpenAI API key has to be added to the env variables once running locally. 
+
+Extent of use of AI to create this app - Claude Code was used to write the code. The domain design and and architectural decisions were done by myself. 
 
 ### Possible next development steps:
 - enhancing UI of the taxonomy and search interface so that it clearer,
@@ -14,22 +18,7 @@ AI usage in this app - Each capture uses single LLM API call to summarize the in
 
 
 
-
-
-
-# Knowledge Base
-
-A personal, self-hosted knowledge base. Web pages you find interesting are captured (from a browser extension, the web UI or by URL), summarised by an LLM, tagged against a taxonomy you control, and kept with full history in OpenSearch so you can search and re-process them later. You can also write your own thoughts straight into it; they are tagged and searched the same way.
-
-- **Capture** a page from your browser (the extension sends what you see, so logins and consent walls are no problem) or by URL.
-- **Summarise and tag** with any OpenAI-compatible LLM. Tags come only from your own taxonomy, and you have the last word on every Item's tags.
-- **Search** with hybrid keyword + semantic search, filtered by tag, date and kind.
-- **Keep history.** Capturing a page again adds a new Version instead of overwriting the old one.
-- **Use it from an agent** through the built-in MCP server (Claude Code, or any other MCP client).
-
-It runs on your own machine: a FastAPI app, OpenSearch in Docker, and your LLM API key. There is one user (the Owner), who signs in with a single token.
-
-> **Status:** alpha, built for personal use. Done: capture, summarise, tag, embed and versioned storage; the web UI (browse, hybrid search, taxonomy editor); the browser extension; Thoughts; the MCP server. Next: an ease-of-use pass over the web UI, then automatic sources (RSS and similar). Data formats may still change between versions.
+## AI-generated description of app setup  below:
 
 ## How it works
 
@@ -168,31 +157,7 @@ Then ask, for example, "what do I have on Hamilton from this week?" or "save thi
 
 ### HTTP API
 
-Every endpoint needs `Authorization: Bearer $API_TOKEN`. The full reference is at <http://localhost:8000/docs>. A few examples (run `export API_TOKEN=...` first):
-
-```bash
-# Capture a page; returns at once, enrichment runs in the background
-curl -X POST localhost:8000/capture \
-  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com/some-article", "channel": "manual"}'
-# → 202 {"item_id": "...", "version_id": "..."}
-
-curl -H "Authorization: Bearer $API_TOKEN" localhost:8000/versions/<version_id>   # status: pending → enriched
-curl -H "Authorization: Bearer $API_TOKEN" localhost:8000/items/<item_id>
-
-# Write a Thought; `tags` picks tags yourself (skips auto-tagging), `written_at` makes retries idempotent
-curl -X POST localhost:8000/thoughts \
-  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"title": "Optional", "text": "What I am thinking."}'
-
-# Edit a Thought (adds a Version), delete one Version (409 if it is the last one), search
-curl -X PUT localhost:8000/thoughts/<item_id> -H "Authorization: Bearer $API_TOKEN" \
-  -H "Content-Type: application/json" -d '{"text": "Edited."}'
-curl -X DELETE -H "Authorization: Bearer $API_TOKEN" localhost:8000/versions/<version_id>
-curl -H "Authorization: Bearer $API_TOKEN" "localhost:8000/search?q=soup&kind=thought"   # kind: article | thought
-```
-
-Sending `content` (the page's HTML) in a capture skips the server-side fetch; that is what the browser extension does.
+The full API is described in the OpenAPI (Swagger) spec at <http://localhost:8000/openapi.json>, browsable at <http://localhost:8000/docs>. Every endpoint needs `Authorization: Bearer $API_TOKEN`.
 
 ## Configuration
 
@@ -221,57 +186,6 @@ This is a single-user app meant to run on your own machine.
 - The bundled `docker-compose.yml` runs OpenSearch **with its security plugin disabled** and publishes ports 9200 and 5601 on the host. Don't expose it to an untrusted network.
 - Captured page content and your Thoughts are sent to the configured LLM provider. Notes are never sent.
 
-## Troubleshooting
-
-- **OpenSearch won't start, or the setup script keeps waiting.** Check `docker compose logs opensearch`. On Linux and WSL2, OpenSearch may need a larger memory-map limit: `sudo sysctl -w vm.max_map_count=262144`.
-- **Every request returns 401.** `API_TOKEN` is unset or still `change-me`, or the client sends a different token. Restart the app after changing `.env`.
-- **Items stay unsummarised or show an error.** Check the app's log for the LLM error (usually a wrong `LLM_API_KEY` or model name), then use *Retry* on the Item page.
-- **Captures are never tagged.** The taxonomy is empty, or no tag fits. Add tags on the Taxonomy page and run *Re-tag*.
-- **`pip install` fails with a Python version error.** The project needs Python 3.12; see step 3 of [Setup](#setup).
-- **A page fails to fetch by URL.** Some sites block server-side requests. Capture it with the browser extension instead.
-
-OpenSearch Dashboards at <http://localhost:5601> lets you look at the raw `items` and `versions` indices.
-
-## Development
-
-```bash
-.venv/bin/pytest -q                                   # offline; see below
-.venv/bin/ruff format . && .venv/bin/ruff check .
-cd extension && npm test && npm run typecheck
-```
-
-The tests never call a real LLM: every response is mocked (`kb.llm.fake.FakeLLM`), and the API keys from `.env` are replaced with a fake one. Storage tests run against OpenSearch on `localhost:9200` when it is up (using a `test_` index prefix they clean up after themselves) and are skipped otherwise. Contributor and agent conventions are in [AGENTS.md](AGENTS.md).
-
-### Project structure
-
-```
-kb/
-  app.py              # FastAPI app: JSON API, mounts the web UI and the MCP server
-  ui.py               # web UI (Jinja templates + htmx) behind a login cookie
-  mcp_server.py       # MCP tools for agents
-  auth.py             # the single Owner token
-  config.py           # constants + Settings (env)
-  models.py           # request and stored models: Item, Version, Enrichment, Taxonomy, ...
-  normalize.py        # URL normalisation, item_id / thought_id / version_id
-  search.py           # hybrid search
-  taxonomy.py         # tag add / rename / delete, re-tag targets
-  owner_tags.py       # the Owner's own and rejected tags on an Item
-  notes.py            # the Owner's Note on an Item
-  versions.py         # deleting a single Version
-  pipeline/
-    fetch.py          # crawl4ai fetch; browser HTML → markdown
-    summarise.py      # structured LLM summary
-    tag.py            # LLM tagging against the taxonomy
-    run.py            # capture / write / edit / enrich: hash → reuse → summarise → embed → tag → store
-  llm/                # LLMClient over any OpenAI-compatible endpoint; FakeLLM for tests
-  storage/            # Storage protocol; OpenSearch + in-memory implementations; index mappings
-  templates/, static/ # web UI
-extension/            # browser extension (TypeScript, MV3, Chrome + Firefox); builds to extension/dist
-tests/                # pytest
-docs/                 # design plan, tagging model, ADRs
-docker-compose.yml    # OpenSearch + Dashboards
-setup.sh              # one-shot local setup
-```
 
 ### Design documents
 
