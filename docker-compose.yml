@@ -1,12 +1,18 @@
+# The whole Knowledge Base: OpenSearch + the app. Both restart with Docker, so with Docker Desktop
+# set to start at sign-in the KB is up without any manual step. Ports are published on localhost only.
+name: kb
+
 services:
   opensearch:
     image: opensearchproject/opensearch:3
-    container_name: opensearch
+    container_name: kb-opensearch
+    restart: unless-stopped
     environment:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
       - bootstrap.memory_lock=true
+      - path.repo=/usr/share/opensearch/snapshots
     ulimits:
       memlock:
         soft: -1
@@ -16,19 +22,40 @@ services:
         hard: 65536
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+      # Snapshot repository (see setup.sh); point KB_BACKUP_DIR at a folder that is synced off the machine.
+      - ${KB_BACKUP_DIR:-./backups}:/usr/share/opensearch/snapshots
     ports:
-      - 9200:9200
+      - 127.0.0.1:9201:9200
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
-  opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:3
-    container_name: opensearch-dashboards
+  app:
+    build: .
+    container_name: kb-app
+    restart: unless-stopped
+    # Live code: the source is mounted over the image's copy and reloaded on change.
+    # Docker starts both containers at once after a restart (depends_on only applies to `compose up`),
+    # so wait until OpenSearch is ready first.
+    command:
+      - sh
+      - -c
+      - |
+        until python -c "import urllib.request; urllib.request.urlopen('http://opensearch:9200/_cluster/health?wait_for_status=yellow&timeout=5s')" 2>/dev/null; do sleep 2; done
+        exec uvicorn kb.app:app --host 0.0.0.0 --port 8000 --reload --reload-dir kb
+    env_file: .env
     environment:
-      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+      - OPENSEARCH_URL=http://opensearch:9200
+    volumes:
+      - .:/app
     ports:
-      - 5601:5601
+      - 127.0.0.1:8000:8000
     depends_on:
-      - opensearch
+      opensearch:
+        condition: service_healthy
 
 volumes:
   opensearch-data:

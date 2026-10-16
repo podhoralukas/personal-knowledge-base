@@ -48,8 +48,12 @@ def enrichment(tags: list[str] | None = None, taxonomy_version: int = 0) -> Enri
     )
 
 
+# The KB's own cluster from docker-compose.yml; tests use prefixed indices and delete them afterwards.
+OPENSEARCH_URL = "http://localhost:9201"
+
+
 def opensearch_client() -> OpenSearch | None:
-    client = OpenSearch(hosts=["http://localhost:9200"], timeout=2)
+    client = OpenSearch(hosts=[OPENSEARCH_URL], timeout=2)
     try:
         client.info()
     except Exception:
@@ -65,7 +69,7 @@ def storage(request):
 
     client = opensearch_client()
     if client is None:
-        pytest.skip("OpenSearch not reachable on localhost:9200")
+        pytest.skip(f"OpenSearch not reachable on {OPENSEARCH_URL}")
     store = OpenSearchStorage(client, index_prefix="test_")
     indices = (store.items_index, store.versions_index, store.taxonomy_index)
     for index in indices:
@@ -391,7 +395,7 @@ def test_ensure_indices_is_idempotent(storage):
 def test_ensure_indices_adds_new_fields_to_existing_indices():
     client = opensearch_client()
     if client is None:
-        pytest.skip("OpenSearch not reachable on localhost:9200")
+        pytest.skip(f"OpenSearch not reachable on {OPENSEARCH_URL}")
     store = OpenSearchStorage(client, index_prefix="test_upgrade_")
     old_items = copy.deepcopy(mappings.ITEMS)
     del old_items["mappings"]["properties"]["taxonomy_version"]

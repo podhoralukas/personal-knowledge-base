@@ -10,6 +10,10 @@ info() { echo -e "${GREEN}[setup]${NC} $*"; }
 warn() { echo -e "${YELLOW}[setup]${NC} $*"; }
 err()  { echo -e "${RED}[setup]${NC} $*" >&2; exit 1; }
 
+OPENSEARCH=http://localhost:9201
+APP=http://localhost:8000
+JSON='Content-Type: application/json'
+
 # ── Prerequisites ────────────────────────────────────────────────────────────
 
 command -v docker   >/dev/null 2>&1 || err "Docker is not installed. See https://docs.docker.com/get-docker/"
@@ -28,7 +32,7 @@ fi
 grep -q "^API_TOKEN=change-me" .env && warn "API_TOKEN is still the placeholder in .env — every request will be rejected until you set it."
 grep -q "^LLM_API_KEY=sk-\.\.\." .env && warn "LLM_API_KEY is still the placeholder in .env — enrichment will fail until you set it."
 
-# ── Python virtual environment ────────────────────────────────────────────────
+# ── Python virtual environment (tests and tools; the app itself runs in Docker) ──
 
 VENV=".venv"
 
@@ -41,25 +45,50 @@ info "Installing Python dependencies..."
 "$VENV/bin/pip" install -q --upgrade pip
 "$VENV/bin/pip" install -q -e . --group dev
 
-# ── OpenSearch ────────────────────────────────────────────────────────────────
+# ── OpenSearch + app ─────────────────────────────────────────────────────────
 
-info "Starting OpenSearch via Docker Compose..."
-docker compose up -d
+BACKUP_DIR=$(grep -E "^KB_BACKUP_DIR=" .env | cut -d= -f2- | tr -d '"' || true)
+mkdir -p "${BACKUP_DIR:-./backups}"
 
-info "Waiting for OpenSearch to be ready..."
-until curl -sf http://localhost:9200/_cluster/health >/dev/null 2>&1; do
+info "Building and starting OpenSearch and the app via Docker Compose..."
+docker compose up -d --build
+
+info "Waiting for the app (it creates the indices on start)..."
+until curl -sf "$APP/health" >/dev/null 2>&1; do
   printf '.'
   sleep 2
 done
 echo
 
+# One node: no replicas, so the indices are green rather than yellow.
+curl -sf -X PUT "$OPENSEARCH/items,versions,taxonomy/_settings" -H "$JSON" \
+  -d '{"index.number_of_replicas": 0}' >/dev/null
+
+# ── Backups: snapshot repository + snapshot-management policy ────────────────
+
+info "Configuring backups into ${BACKUP_DIR:-./backups}..."
+curl -sf -X PUT "$OPENSEARCH/_snapshot/kb-backups" -H "$JSON" \
+  -d '{"type": "fs", "settings": {"location": "/usr/share/opensearch/snapshots"}}' >/dev/null
+
+# Every 2 hours, so a PC that is off at some hours still gets snapshots; kept 14 days.
+if ! curl -sf "$OPENSEARCH/_plugins/_sm/policies/kb-backups" >/dev/null 2>&1; then
+  curl -sf -X POST "$OPENSEARCH/_plugins/_sm/policies/kb-backups" -H "$JSON" -d '{
+    "description": "KB backups: every 2 hours, kept 14 days",
+    "creation": {"schedule": {"cron": {"expression": "0 */2 * * *", "timezone": "UTC"}}},
+    "deletion": {
+      "schedule": {"cron": {"expression": "30 */2 * * *", "timezone": "UTC"}},
+      "condition": {"max_age": "14d", "min_count": 1}
+    },
+    "snapshot_config": {"repository": "kb-backups", "indices": "items,versions,taxonomy", "include_global_state": false},
+    "enabled": true
+  }' >/dev/null
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 
 echo
-info "Setup complete. To start the app:"
+info "Setup complete. The Knowledge Base runs at $APP and restarts with Docker."
 echo
-echo "  source $VENV/bin/activate"
-echo "  uvicorn kb.app:app --reload"
-echo
-echo "The items/versions indices are created on first start."
-echo "OpenSearch Dashboards: http://localhost:5601"
+echo "  Start Docker Desktop at sign-in (Settings → General) so it is always up."
+echo "  Code changes in kb/ reload live; after changing dependencies run: docker compose up -d --build"
+echo "  Logs: docker compose logs -f app"
