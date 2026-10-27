@@ -47,8 +47,13 @@ info "Installing Python dependencies..."
 
 # ── OpenSearch + app ─────────────────────────────────────────────────────────
 
-BACKUP_DIR=$(grep -E "^KB_BACKUP_DIR=" .env | cut -d= -f2- | tr -d '"' || true)
+env_value() { grep -E "^$1=" .env | cut -d= -f2- | tr -d '"' || true; }
+
+BACKUP_DIR=$(env_value KB_BACKUP_DIR)
 mkdir -p "${BACKUP_DIR:-./backups}"
+
+INDEX_PREFIX=$(env_value OPENSEARCH_INDEX_PREFIX)
+INDICES="${INDEX_PREFIX}items,${INDEX_PREFIX}versions,${INDEX_PREFIX}taxonomy"
 
 info "Building and starting OpenSearch and the app via Docker Compose..."
 docker compose up -d --build
@@ -61,7 +66,7 @@ done
 echo
 
 # One node: no replicas, so the indices are green rather than yellow.
-curl -sf -X PUT "$OPENSEARCH/items,versions,taxonomy/_settings" -H "$JSON" \
+curl -sf -X PUT "$OPENSEARCH/$INDICES/_settings" -H "$JSON" \
   -d '{"index.number_of_replicas": 0}' >/dev/null
 
 # ── Backups: snapshot repository + snapshot-management policy ────────────────
@@ -79,7 +84,7 @@ if ! curl -sf "$OPENSEARCH/_plugins/_sm/policies/kb-backups" >/dev/null 2>&1; th
       "schedule": {"cron": {"expression": "30 */2 * * *", "timezone": "UTC"}},
       "condition": {"max_age": "14d", "min_count": 1}
     },
-    "snapshot_config": {"repository": "kb-backups", "indices": "items,versions,taxonomy", "include_global_state": false},
+    "snapshot_config": {"repository": "kb-backups", "indices": "'"$INDICES"'", "include_global_state": false},
     "enabled": true
   }' >/dev/null
 fi
