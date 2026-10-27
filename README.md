@@ -35,8 +35,8 @@ Each capture creates a new **Version** of an **Item** (one Item per normalised U
 ## Requirements
 
 - Linux, macOS, or Windows with WSL2 (the setup script is Bash)
-- [Docker](https://docs.docker.com/get-docker/) with the Compose plugin, for OpenSearch
-- Python **3.12** (exactly 3.12; 3.13 is not supported yet)
+- [Docker](https://docs.docker.com/get-docker/) with the Compose plugin (Docker Desktop on Windows), which runs OpenSearch and the app
+- Python **3.12** (exactly 3.12; 3.13 is not supported yet), for the tests and the setup script's tooling
 - An API key for an OpenAI-compatible LLM endpoint (OpenAI by default; see [Configuration](#configuration))
 - Node.js 22+, only if you want to build the browser extension
 
@@ -62,13 +62,13 @@ Open `.env` and set two values:
 - `API_TOKEN`: a long random secret. Every client (web UI, extension, API, MCP) signs in with it. Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
 - `LLM_API_KEY`: your OpenAI API key (or the key for the endpoint you set in `LLM_BASE_URL`).
 
-**3. Install and start OpenSearch**
+**3. Install and start**
 
 ```bash
 ./setup.sh
 ```
 
-The script creates a `.venv` with Python 3.12, installs the package with its dev tools, starts OpenSearch and OpenSearch Dashboards with Docker Compose, and waits until OpenSearch is healthy. It is safe to run again. If you skipped step 2, it creates `.env` for you and stops so you can fill it in.
+The script creates a `.venv` with Python 3.12 for the tests, builds and starts OpenSearch and the app with Docker Compose, waits until the app is up, and configures backups (see [Backups](#backups)). It is safe to run again. If you skipped step 2, it creates `.env` for you and stops so you can fill it in.
 
 If `python3` on your machine is not 3.12, create the virtual environment yourself first; the script reuses an existing `.venv`:
 
@@ -77,16 +77,29 @@ python3.12 -m venv .venv
 ./setup.sh
 ```
 
-**4. Start the app**
+Open <http://localhost:8000> and sign in with your `API_TOKEN`. The OpenSearch indices are created when the app first starts.
+
+**4. Keep it running**
+
+Both containers (`kb-opensearch`, `kb-app`) restart whenever Docker does. On Windows, turn on Docker Desktop's *Settings → General → Start Docker Desktop when you sign in*, and the Knowledge Base is up a minute after you sign in, without opening a terminal.
+
+To stop it: `docker compose stop` (it stays stopped until `docker compose start`). Your data lives in the `kb_opensearch-data` Docker volume and survives restarts. `docker compose down -v` deletes it.
+
+### Development
+
+The app container runs the source from this folder with `uvicorn --reload`, so a change in `kb/` is live within a second; a broken edit stops the app until it is fixed (`docker compose logs -f app`). After changing dependencies in `pyproject.toml`, rebuild with `docker compose up -d --build`. Tests run from the `.venv` (`.venv/bin/pytest`); the OpenSearch tests use `test_`-prefixed indices in the same cluster and delete them afterwards.
+
+### Backups
+
+OpenSearch snapshots the Knowledge Base's indices every 2 hours into the folder `KB_BACKUP_DIR` (default `./backups`) and keeps them for 14 days. Point it at a folder that leaves the machine, e.g. `C:\Users\<you>\kb-backups` (`KB_BACKUP_DIR=/mnt/c/Users/<you>/kb-backups` under WSL) synced by Google Drive for desktop (*Preferences → My Computer → Add folder*) or OneDrive. Snapshots are incremental, so they stay small.
+
+To restore one (here into renamed indices, to compare before replacing anything):
 
 ```bash
-source .venv/bin/activate
-uvicorn kb.app:app --reload
+curl -s localhost:9201/_snapshot/kb-backups/_all | python3 -m json.tool   # list snapshots
+curl -X POST "localhost:9201/_snapshot/kb-backups/<snapshot>/_restore" -H 'Content-Type: application/json' \
+  -d '{"indices": "items,versions,taxonomy", "rename_pattern": "(.+)", "rename_replacement": "restored-$1"}'
 ```
-
-Open <http://localhost:8000> and sign in with your `API_TOKEN`. The OpenSearch indices are created on the first start.
-
-To stop: `Ctrl+C` for the app, `docker compose stop` for OpenSearch. Your data lives in the `opensearch-data` Docker volume and survives restarts. `docker compose down -v` deletes it.
 
 ## Usage
 
@@ -164,9 +177,10 @@ All settings are read from `.env` (see [.env.example](.env.example)) or from env
 | `EMBEDDING_BASE_URL` | `https://api.openai.com/v1` | Embeddings may use a different endpoint than chat. |
 | `EMBEDDING_API_KEY` | `LLM_API_KEY` | |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must return **1536-dimensional** vectors. Changing it makes existing vectors incomparable. |
-| `OPENSEARCH_URL` | `http://localhost:9200` | OpenSearch endpoint. |
+| `OPENSEARCH_URL` | `http://localhost:9200` | OpenSearch endpoint. `docker-compose.yml` sets it to the `kb-opensearch` container for the app. |
 | `OPENSEARCH_USERNAME` / `OPENSEARCH_PASSWORD` | none | For a secured OpenSearch cluster. |
 | `OPENSEARCH_INDEX_PREFIX` | empty | Prefix for index names, to keep several instances in one cluster apart. |
+| `KB_BACKUP_DIR` | `./backups` | Folder for OpenSearch snapshots, read by `docker-compose.yml`. |
 
 Fixed tunables (timeouts, search weights, length limits) are constants in [kb/config.py](kb/config.py).
 
@@ -174,8 +188,8 @@ Fixed tunables (timeouts, search weights, length limits) are constants in [kb/co
 
 This is a single-user app meant to run on your own machine.
 
-- `uvicorn` listens on `127.0.0.1` by default. If you expose it beyond localhost, put it behind HTTPS (a reverse proxy) and use a strong `API_TOKEN`.
-- The bundled `docker-compose.yml` runs OpenSearch **with its security plugin disabled** and publishes ports 9200 and 5601 on the host. Don't expose it to an untrusted network.
+- `docker-compose.yml` publishes the app (port 8000) and OpenSearch (port 9201) on `127.0.0.1` only. If you expose the app beyond localhost, put it behind HTTPS (a reverse proxy or a tunnel) and use a strong `API_TOKEN`.
+- OpenSearch runs **with its security plugin disabled**. Never publish port 9201 to a network.
 - Captured page content and your Thoughts are sent to the configured LLM provider. Notes are never sent.
 
 

@@ -224,3 +224,6 @@ node_modules/
 
 # Internal design log, kept local
 docs/plan.md
+
+# OpenSearch snapshots (default KB_BACKUP_DIR)
+backups/
