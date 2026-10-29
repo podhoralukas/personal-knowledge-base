@@ -354,7 +354,7 @@ export interface paths {
         };
         /**
          * Taxonomy Stats
-         * @description Item counts for the Tag tree, and which Tags can be deleted.
+         * @description Item counts for the Tag tree, which Tags can be deleted, and how many Items a re-tag would reach.
          */
         get: operations["taxonomy_stats_taxonomy_stats_get"];
         put?: never;
@@ -719,6 +719,11 @@ export interface components {
              * @description Tags nothing uses and without sub-tags
              */
             deletable: string[];
+            /**
+             * Retag Candidates
+             * @description Items a re-tag without `all` reaches (POST /taxonomy/retag)
+             */
+            retag_candidates: number;
         };
         /**
          * ThoughtEdit

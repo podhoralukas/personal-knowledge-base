@@ -1,7 +1,7 @@
 import type { Kind } from "@/api/client";
 import { RANGES, rangeDates } from "@/lib/dates";
 import type { Filters } from "@/lib/filters";
-import { SectionLabel } from "./bits";
+import { AppLink, SectionLabel } from "./bits";
 import { Segmented } from "./Segmented";
 import { TagTree } from "./TagTree";
 
@@ -76,9 +76,9 @@ export function Sidebar({
       </section>
       <p className="px-1.5 text-[0.8rem] text-muted-foreground">
         Edit tags on the{" "}
-        <a href="/ui/taxonomy" className="text-primary hover:underline">
+        <AppLink href="/app/taxonomy" className="text-primary hover:underline">
           Taxonomy
-        </a>{" "}
+        </AppLink>{" "}
         page.
       </p>
     </div>

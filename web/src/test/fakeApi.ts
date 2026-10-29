@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import type { Item, Tag, Version } from "@/api/client";
-import { under } from "@/lib/tags";
+import { splitPath, under } from "@/lib/tags";
 import { server } from "./server";
 
 export function item(fields: Partial<Item> & Pick<Item, "id" | "title">): Item {
@@ -43,11 +43,15 @@ export function version(of: Item, fields: Partial<Version> = {}): Version {
 /** The JSON API over in-memory Items and Tags. Like the real one it wants the login cookie (here: `loggedIn`)
  * with the CSRF header; `requests` records every URL asked for, `bodies` every JSON body sent.
  * A Capture of a URL containing "unreachable" fails like a failed fetch. A new Capture stores only a pending
- * Version, as the real one does until enrichment, which a test does by hand. */
-export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version[]; loggedIn?: boolean } = {}) {
+ * Version, as the real one does until enrichment, which a test does by hand. `retagCandidates` is what stats
+ * report until a re-tag runs; Tags are checked like the real Taxonomy (lowercase path, existing parent). */
+export function fakeApi(
+  init: { items?: Item[]; tags?: Tag[]; versions?: Version[]; loggedIn?: boolean; retagCandidates?: number } = {},
+) {
   const state = {
     items: structuredClone(init.items ?? []),
-    tags: init.tags ?? [],
+    tags: structuredClone(init.tags ?? []),
+    retagCandidates: init.retagCandidates ?? 0,
     versions: structuredClone(init.versions ?? []),
     loggedIn: init.loggedIn ?? true,
     requests: [] as URL[],
@@ -56,6 +60,8 @@ export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version
   const authed = (request: Request) => state.loggedIn && request.headers.has("X-KB-CSRF");
   const denied = () => HttpResponse.json({ detail: "invalid or missing token" }, { status: 401 });
   const missing = () => HttpResponse.json({ detail: "no such item" }, { status: 404 });
+  const invalid = (detail: string) => HttpResponse.json({ detail }, { status: 422 });
+  const conflict = (detail: string) => HttpResponse.json({ detail }, { status: 409 });
   const find = (id: string) => state.items.find((i) => i.id === id);
   const listed = (url: URL, keep: (i: Item) => boolean) => {
     const [kind, from, to] = ["kind", "from", "to"].map((k) => url.searchParams.get(k));
@@ -120,7 +126,56 @@ export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version
         state.tags.map((t) => [t.path, state.items.filter((i) => (i.tags ?? []).some((p) => under(p, t.path))).length]),
       );
       const untagged = state.items.filter((i) => !i.tags?.length).length;
-      return HttpResponse.json({ items: state.items.length, untagged, counts, deletable: [] });
+      const deletable = state.tags
+        .map((t) => t.path)
+        .filter((path) => !counts[path] && !state.tags.some((t) => t.path.startsWith(`${path}/`)));
+      return HttpResponse.json({
+        items: state.items.length,
+        untagged,
+        counts,
+        deletable,
+        retag_candidates: state.retagCandidates,
+      });
+    }),
+    http.post("/taxonomy/tags", async ({ request }) => {
+      if (!authed(request)) return denied();
+      const { path, description } = await sent<{ path: string; description: string }>(request);
+      const parent = splitPath(path)[0].slice(0, -1);
+      if (!/^[a-z0-9-]+(\/[a-z0-9-]+)*$/.test(path)) return invalid(`invalid tag path ${path}`);
+      if (state.tags.some((t) => t.path === path)) return conflict(`tag '${path}' already exists`);
+      if (parent && !state.tags.some((t) => t.path === parent)) return invalid(`parent tag '${parent}' does not exist`);
+      const created = tag(path, description);
+      state.tags.push(created);
+      return HttpResponse.json(created, { status: 201 });
+    }),
+    http.patch(/\/taxonomy\/tags\/(.+)$/, async ({ request }) => {
+      if (!authed(request)) return denied();
+      const path = decodeURIComponent(new URL(request.url).pathname.match(/\/taxonomy\/tags\/(.+)$/)![1]);
+      const change = await sent<{ path?: string; description?: string }>(request);
+      const own = state.tags.find((t) => t.path === path);
+      if (!own) return missing();
+      if (change.path && state.tags.some((t) => t.path === change.path)) return conflict(`tag '${change.path}' already exists`);
+      if (change.description !== undefined) own.description = change.description;
+      if (change.path) {
+        const moved = (p: string) => (under(p, path) ? change.path + p.slice(path.length) : p);
+        for (const t of state.tags) t.path = moved(t.path);
+        for (const i of state.items) i.tags = (i.tags ?? []).map(moved);
+      }
+      return HttpResponse.json(own);
+    }),
+    http.delete(/\/taxonomy\/tags\/(.+)$/, ({ request }) => {
+      if (!authed(request)) return denied();
+      const path = decodeURIComponent(new URL(request.url).pathname.match(/\/taxonomy\/tags\/(.+)$/)![1]);
+      state.tags = state.tags.filter((t) => t.path !== path);
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post("/taxonomy/retag", ({ request }) => {
+      if (!authed(request)) return denied();
+      const all = new URL(request.url).searchParams.get("all") === "true";
+      const item_count = all ? state.items.length : state.retagCandidates;
+      state.bodies.push({ method: "POST", path: `/taxonomy/retag${all ? "?all=true" : ""}`, body: null });
+      state.retagCandidates = 0;
+      return HttpResponse.json({ taxonomy_version: 1, item_count }, { status: 202 });
     }),
     http.get("/items/untagged", ({ request }) =>
       authed(request) ? HttpResponse.json(listed(new URL(request.url), (i) => !i.tags?.length)) : denied(),

@@ -1,13 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MenuIcon, PlusIcon } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { api, unwrap } from "@/api/client";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useItemList } from "@/api/queries";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useFilters } from "@/lib/filters";
 import { useDebounced, useMediaQuery } from "@/lib/hooks";
 import { AddDialog } from "./AddDialog";
+import { Panel } from "./bits";
+import { Header } from "./Header";
 import { ItemList } from "./ItemList";
 import { ItemPane } from "./ItemPane";
 import { Sidebar } from "./Sidebar";
@@ -86,7 +84,7 @@ export function Shell() {
 
   return (
     <div className="flex h-svh flex-col overflow-hidden px-4">
-      <Header onFilters={narrow ? () => setSidebar(true) : undefined} onAdd={() => setAdding(true)} />
+      <Header page="items" onFilters={narrow ? () => setSidebar(true) : undefined} onAdd={() => setAdding(true)} />
       <div
         className={
           wide
@@ -132,54 +130,5 @@ export function Shell() {
         </Sheet>
       )}
     </div>
-  );
-}
-
-function Panel({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section aria-label={label} className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[10px] border bg-card">
-      {children}
-    </section>
-  );
-}
-
-function Header({ onFilters, onAdd }: { onFilters?: () => void; onAdd: () => void }) {
-  const queryClient = useQueryClient();
-  const logout = useMutation({
-    mutationFn: async () => unwrap(await api.POST("/auth/logout")),
-    onSuccess: () => queryClient.resetQueries(),
-  });
-  const link = "rounded-md px-2.5 py-1 font-medium text-muted-foreground";
-
-  return (
-    <header className="flex items-center gap-5 py-2.5">
-      {onFilters && (
-        <Button variant="ghost" size="icon" aria-label="Show tags and filters" onClick={onFilters}>
-          <MenuIcon />
-        </Button>
-      )}
-      <div className="flex items-center gap-2 font-semibold tracking-tight whitespace-nowrap">
-        <span className="size-[0.7rem] rounded-[2px] bg-primary" />
-        Knowledge Base
-      </div>
-      {!onFilters && (
-        <nav aria-label="Main" className="flex gap-1">
-          <a href="/app/" aria-current="page" className={`${link} bg-card text-foreground ring-1 ring-border`}>
-            Items
-          </a>
-          <a href="/ui/taxonomy" className={link}>
-            Taxonomy
-          </a>
-        </nav>
-      )}
-      <span className="flex-1" />
-      <Button onClick={onAdd}>
-        <PlusIcon />
-        <span className={onFilters ? "sr-only" : undefined}>Add</span>
-      </Button>
-      <Button variant="ghost" onClick={() => logout.mutate()}>
-        Log out
-      </Button>
-    </header>
   );
 }

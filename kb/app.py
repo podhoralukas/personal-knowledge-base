@@ -102,6 +102,7 @@ class TaxonomyStats(BaseModel):
     untagged: int
     counts: dict[str, int] = Field(description="Items under each Tag, sub-tags included")
     deletable: list[str] = Field(description="Tags nothing uses and without sub-tags")
+    retag_candidates: int = Field(description="Items a re-tag without `all` reaches (POST /taxonomy/retag)")
 
 
 class WebApp(StaticFiles):
@@ -353,13 +354,14 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
 
     @app.get("/taxonomy/stats", response_model=TaxonomyStats)
     def taxonomy_stats(pipe: Pipe, _: Auth) -> TaxonomyStats:
-        """Item counts for the Tag tree, and which Tags can be deleted."""
+        """Item counts for the Tag tree, which Tags can be deleted, and how many Items a re-tag would reach."""
         tags = [t.path for t in pipe.storage.get_taxonomy().tags]
         return TaxonomyStats(
             items=len(pipe.storage.list_item_ids()),
             untagged=len(pipe.storage.list_untagged_items()),
             counts=pipe.storage.count_items(tags),
             deletable=sorted(deletable_tags(pipe.storage)),
+            retag_candidates=len(retag_targets(pipe.storage)),
         )
 
     @app.post("/taxonomy/tags", status_code=status.HTTP_201_CREATED, response_model=Tag)

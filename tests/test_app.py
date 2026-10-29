@@ -415,7 +415,11 @@ def test_taxonomy_stats(client, llm):
         "untagged": 1,
         "counts": {"ai": 1, "ai/rag": 1, "cooking": 0},
         "deletable": ["cooking"],
+        "retag_candidates": 0,
     }
+    client.post("/taxonomy/tags", json={"path": "news"}, headers=AUTH)
+    # The untagged Item could get the new Tag; the one tagged ai/rag has no parent of it.
+    assert client.get("/taxonomy/stats", headers=AUTH).json()["retag_candidates"] == 1
     assert client.get("/taxonomy/stats").status_code == 401
 
 

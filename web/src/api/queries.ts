@@ -14,12 +14,61 @@ const keys = {
 /** While a Capture or a Thought is being enriched, its Item and Versions are polled. */
 const PENDING_POLL_MS = 2000;
 
-export function useStats() {
-  return useQuery({ queryKey: keys.stats, queryFn: async () => unwrap(await api.GET("/taxonomy/stats")) });
+/** Counts for the Tag tree and the re-tag panel; polled every `pollMs` while a re-tag runs. */
+export function useStats(pollMs: number | false = false) {
+  return useQuery({
+    queryKey: keys.stats,
+    queryFn: async () => unwrap(await api.GET("/taxonomy/stats")),
+    refetchInterval: pollMs,
+  });
 }
 
 export function useTaxonomy() {
   return useQuery({ queryKey: keys.taxonomy, queryFn: async () => unwrap(await api.GET("/taxonomy")) });
+}
+
+/** After a Taxonomy change everything is read again: a rename rewrites Tags on Items and Versions. */
+function useTaxonomyChanged() {
+  const client = useQueryClient();
+  return useCallback(() => void client.invalidateQueries(), [client]);
+}
+
+export type NewTag = { path: string; description: string };
+
+/** Adds a Tag; its parent must exist. Items get it on their next Capture or re-tag. */
+export function useAddTag() {
+  return useMutation({
+    mutationFn: async (tag: NewTag) => unwrap(await api.POST("/taxonomy/tags", { body: tag })),
+    onSuccess: useTaxonomyChanged(),
+    meta: { inlineError: true },
+  });
+}
+
+/** A new description and/or path for the Tag at `path`; a new path renames it everywhere (spelling, not meaning). */
+export function useChangeTag(path: string) {
+  return useMutation({
+    mutationFn: async (change: { path?: string; description?: string }) =>
+      unwrap(await api.PATCH("/taxonomy/tags/{path}", { params: { path: { path } }, body: change })),
+    onSuccess: useTaxonomyChanged(),
+    meta: { inlineError: true },
+  });
+}
+
+/** Deletes a Tag nothing uses and without sub-tags. */
+export function useDeleteTag(path: string) {
+  return useMutation({
+    mutationFn: async () => unwrap(await api.DELETE("/taxonomy/tags/{path}", { params: { path: { path } } })),
+    onSuccess: useTaxonomyChanged(),
+    meta: { inlineError: true },
+  });
+}
+
+/** Re-tags the candidates, or every Item with `all`, in the background; one LLM call per Item. */
+export function useRetag() {
+  return useMutation({
+    mutationFn: async (all: boolean) => unwrap(await api.POST("/taxonomy/retag", { params: { query: { all } } })),
+    onSuccess: useTaxonomyChanged(),
+  });
 }
 
 export type ItemList = {
