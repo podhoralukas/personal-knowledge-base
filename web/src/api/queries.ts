@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef } from "react";
 import type { Filters } from "@/lib/filters";
 import { api, type Item, SESSION_KEY, unwrap } from "./client";
 
@@ -69,15 +70,66 @@ export function useVersions(id: string) {
   });
 }
 
-/** Changes to one Item: its Tags, its Note, deleting it or one of its Versions. */
-export function useItemEdits(id: string) {
+/** Once the Item's pending Version is done, the Item is read again (its polling stops, and the last poll may
+ * predate the end) and so are the lists, which a new Capture joins only now. */
+export function useWhenProcessed(id: string, pending: boolean) {
   const client = useQueryClient();
-  const listsChanged = () => {
+  const listsChanged = useListsChanged();
+  const was = useRef(pending);
+  useEffect(() => {
+    if (was.current && !pending) {
+      void client.invalidateQueries({ queryKey: keys.item(id) });
+      listsChanged();
+    }
+    was.current = pending;
+  }, [id, pending, client, listsChanged]);
+}
+
+/** Refreshes the Item lists and the sidebar's counts after an Item was added, changed or deleted. */
+export function useListsChanged() {
+  const client = useQueryClient();
+  return useCallback(() => {
     void client.invalidateQueries({ queryKey: keys.items });
     void client.invalidateQueries({ queryKey: keys.stats });
+  }, [client]);
+}
+
+/** What the Owner typed for a Thought; no Tags picked means the pipeline tags it. */
+export type ThoughtDraft = { title: string; text: string; tags: string[] };
+
+/** The "+ Add" dialog's two ways in. Both return at once; the Item is enriched in the background. */
+export function useAdd() {
+  const listsChanged = useListsChanged();
+  return {
+    /** The server fetches the page. */
+    capture: useMutation({
+      mutationFn: async (url: string) =>
+        unwrap(await api.POST("/capture", { body: { url, channel: "manual", note: "" } })),
+      onSuccess: listsChanged,
+      meta: { inlineError: true },
+    }),
+    /** `written_at` is fixed per draft, so sending it twice stores one Thought. */
+    write: useMutation({
+      mutationFn: async (thought: ThoughtDraft & { written_at: string }) =>
+        unwrap(await api.POST("/thoughts", { body: thought })),
+      onSuccess: listsChanged,
+      meta: { inlineError: true },
+    }),
   };
+}
+
+/** Changes to one Item: its Tags, its Note, a new Version, deleting it or one of its Versions. */
+export function useItemEdits(id: string) {
+  const client = useQueryClient();
+  const listsChanged = useListsChanged();
   const edited = (item: Item) => {
     client.setQueryData(keys.item(id), item);
+    listsChanged();
+  };
+  /** A new or retried Version is pending: the Item and its Versions are read again, and polled while pending. */
+  const processing = () => {
+    void client.invalidateQueries({ queryKey: keys.item(id) });
+    void client.invalidateQueries({ queryKey: keys.versions(id) });
     listsChanged();
   };
   const item_id = id;
@@ -104,6 +156,25 @@ export function useItemEdits(id: string) {
       mutationFn: async (notes: string) =>
         unwrap(await api.PUT("/items/{item_id}/notes", { params: { path: { item_id } }, body: { notes } })),
       onSuccess: edited,
+    }),
+    /** A new Version of a Thought; its Tags follow from the pipeline, as the Item's own Tags are kept. */
+    editThought: useMutation({
+      mutationFn: async (thought: { title: string; text: string }) =>
+        unwrap(await api.PUT("/thoughts/{item_id}", { params: { path: { item_id } }, body: thought })),
+      onSuccess: processing,
+      meta: { inlineError: true },
+    }),
+    /** Fetches the article's page again, as a new Version. The Accepted Item can differ when the page redirects. */
+    captureAgain: useMutation({
+      mutationFn: async (url: string) =>
+        unwrap(await api.POST("/capture", { body: { url, channel: "manual", note: "" } })),
+      onSuccess: processing,
+    }),
+    /** Enriches a Thought's failed current Version again. */
+    retry: useMutation({
+      mutationFn: async () =>
+        unwrap(await api.POST("/thoughts/{item_id}/retry", { params: { path: { item_id } } })),
+      onSuccess: processing,
     }),
     remove: useMutation({
       mutationFn: async () => unwrap(await api.DELETE("/items/{item_id}", { params: { path: { item_id } } })),

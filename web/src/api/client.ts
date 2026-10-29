@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { components, paths } from "./schema";
 
 type Schemas = components["schemas"];
+export type Accepted = Schemas["Accepted"];
 export type Item = Schemas["ItemView"];
 export type Kind = Schemas["Kind"];
 export type Tag = Schemas["Tag"];
@@ -49,8 +50,16 @@ export function isUnauthorized(error: unknown): boolean {
 /** The query whose 401 shows the login form. */
 export const SESSION_KEY = ["stats"];
 
+declare module "@tanstack/react-query" {
+  interface Register {
+    /** `inlineError`: the form that made the change shows its error, so no toast. */
+    mutationMeta: { inlineError?: boolean };
+  }
+}
+
 /** A failed read is retried once, a 401 never: it needs a login, not another try. A 401 anywhere refreshes
- * the session query, so an expired login shows the login form; any other failed change is a toast. */
+ * the session query, so an expired login shows the login form; any other failed change is a toast, unless
+ * its form shows the error itself. */
 export function createQueryClient(): QueryClient {
   const client: QueryClient = new QueryClient({
     queryCache: new QueryCache({
@@ -59,7 +68,10 @@ export function createQueryClient(): QueryClient {
       },
     }),
     mutationCache: new MutationCache({
-      onError: (error) => (isUnauthorized(error) ? loggedOut() : toast.error(error.message)),
+      onError: (error, _variables, _context, mutation) => {
+        if (isUnauthorized(error)) loggedOut();
+        else if (!mutation.meta?.inlineError) toast.error(error.message);
+      },
     }),
     defaultOptions: { queries: { retry: (failures, error) => !isUnauthorized(error) && failures < 1 } },
   });

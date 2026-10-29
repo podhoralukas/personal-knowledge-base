@@ -41,7 +41,9 @@ export function version(of: Item, fields: Partial<Version> = {}): Version {
 }
 
 /** The JSON API over in-memory Items and Tags. Like the real one it wants the login cookie (here: `loggedIn`)
- * with the CSRF header; `requests` records every URL asked for. */
+ * with the CSRF header; `requests` records every URL asked for, `bodies` every JSON body sent.
+ * A Capture of a URL containing "unreachable" fails like a failed fetch. A new Capture stores only a pending
+ * Version, as the real one does until enrichment, which a test does by hand. */
 export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version[]; loggedIn?: boolean } = {}) {
   const state = {
     items: structuredClone(init.items ?? []),
@@ -49,6 +51,7 @@ export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version
     versions: structuredClone(init.versions ?? []),
     loggedIn: init.loggedIn ?? true,
     requests: [] as URL[],
+    bodies: [] as { method: string; path: string; body: unknown }[],
   };
   const authed = (request: Request) => state.loggedIn && request.headers.has("X-KB-CSRF");
   const denied = () => HttpResponse.json({ detail: "invalid or missing token" }, { status: 401 });
@@ -75,6 +78,24 @@ export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version
     return HttpResponse.json(it);
   };
   const annotations = (i: Item) => (i.annotations ??= { notes: "", owner_tags: [], rejected_tags: [] });
+  /** The request's JSON body, recorded in `bodies`. */
+  const sent = async <T,>(request: Request): Promise<T> => {
+    const body = (await request.json()) as T;
+    state.bodies.push({ method: request.method, path: new URL(request.url).pathname, body });
+    return body;
+  };
+  /** A pending Version of `itemId`, captured or written now. */
+  const pending = (itemId: string, fields: Partial<Version> = {}) => {
+    const at = new Date().toISOString();
+    const v: Version = {
+      ...version(item({ id: itemId, title: "" }), { status: "pending", enrichment: null }),
+      id: `${itemId}:${at}`,
+      captured_at: at,
+      ...fields,
+    };
+    state.versions.push(v);
+    return HttpResponse.json({ item_id: itemId, version_id: v.id }, { status: 202 });
+  };
 
   server.use(
     http.all("*", ({ request }) => {
@@ -125,7 +146,9 @@ export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version
     http.get("/items/:id/versions", ({ request, params }) => {
       if (!authed(request)) return denied();
       const it = find(String(params.id));
-      const own = state.versions.filter((v) => v.item_id === params.id);
+      const own = state.versions
+        .filter((v) => v.item_id === params.id)
+        .sort((a, b) => b.captured_at.localeCompare(a.captured_at)); // newest first, as stored
       return HttpResponse.json(own.length || !it ? own : [version(it)]);
     }),
     http.post("/items/:id/tags", async ({ request, params }) => {
@@ -165,6 +188,44 @@ export function fakeApi(init: { items?: Item[]; tags?: Tag[]; versions?: Version
       if (!find(String(params.id))) return missing();
       state.items = state.items.filter((i) => i.id !== params.id);
       return new HttpResponse(null, { status: 204 });
+    }),
+    http.post("/capture", async ({ request }) => {
+      if (!authed(request)) return denied();
+      const { url } = await sent<{ url: string }>(request);
+      if (url.includes("unreachable")) return HttpResponse.json({ detail: "fetch failed: timed out" }, { status: 502 });
+      const known = state.items.find((i) => i.original_url === url);
+      return pending(known?.id ?? `captured:${url}`, { channel: "manual", original_url: url });
+    }),
+    http.post("/thoughts", async ({ request }) => {
+      if (!authed(request)) return denied();
+      const t = await sent<{ title: string; text: string; tags: string[]; written_at: string }>(request);
+      const id = `thought:${t.written_at}`;
+      if (!find(id)) {
+        const title = t.title || t.text.split("\n")[0];
+        state.items.push(
+          item({ id, media_type: "thought", original_url: null, title, text: t.text, tags: t.tags, first_captured_at: t.written_at }),
+        );
+      }
+      return pending(id, { channel: "written", kind: "thought", title: t.title, text: t.text });
+    }),
+    http.put("/thoughts/:id", async ({ request, params }) => {
+      if (!authed(request)) return denied();
+      const it = find(String(params.id));
+      if (!it) return missing();
+      const t = await sent<{ title: string; text: string }>(request);
+      if (!t.text.trim()) return HttpResponse.json({ detail: [{ msg: "Value error, text is empty" }] }, { status: 422 });
+      Object.assign(it, { title: t.title || t.text.split("\n")[0], text: t.text });
+      const response = pending(it.id, { channel: "written", kind: "thought", title: t.title, text: t.text });
+      it.current_version_id = state.versions.at(-1)!.id;
+      return response;
+    }),
+    http.post("/thoughts/:id/retry", ({ request, params }) => {
+      if (!authed(request)) return denied();
+      const it = find(String(params.id));
+      const current = state.versions.find((v) => v.id === it?.current_version_id);
+      if (!current || current.status !== "failed") return HttpResponse.json({ detail: "nothing to retry" }, { status: 409 });
+      current.status = "pending";
+      return HttpResponse.json({ item_id: current.item_id, version_id: current.id }, { status: 202 });
     }),
     http.delete("/versions/:id", ({ request, params }) => {
       if (!authed(request)) return denied();

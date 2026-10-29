@@ -1,8 +1,8 @@
 import { EllipsisIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
-import { useItem, useItemEdits, useVersions } from "@/api/queries";
+import { useItem, useItemEdits, useVersions, useWhenProcessed } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,21 +15,24 @@ import { Dot, Empty, KindBadge, SectionLabel } from "./bits";
 import { ItemNote } from "./ItemNote";
 import { ItemTags } from "./ItemTags";
 import { ItemVersions } from "./ItemVersions";
+import { ThoughtEdit } from "./ThoughtEdit";
 
 type Props = {
   id?: string;
+  /** Shows another Item: the one a "Capture again" landed on when the page redirected. */
+  onOpen: (id: string) => void;
   /** Closes the drawer the pane is shown in; absent in the three-pane layout. */
   onClose?: () => void;
   onDeleted: () => void;
 };
 
 /** The selected Item: what it is, its Tags, its text, the Note and the Versions (D36). */
-export function ItemPane({ id, onClose, onDeleted }: Props) {
+export function ItemPane({ id, onOpen, onClose, onDeleted }: Props) {
   return (
     // Keyed by the Item, so a newly selected one starts at the top with no open menu, confirm or draft.
     <div key={id} className="min-h-0 flex-1 overflow-y-auto px-[clamp(1.25rem,3vw,2.75rem)] pt-7 pb-12">
       {id ? (
-        <ItemView id={id} onClose={onClose} onDeleted={onDeleted} />
+        <ItemView id={id} onOpen={onOpen} onClose={onClose} onDeleted={onDeleted} />
       ) : (
         <Empty>Pick an item from the list.</Empty>
       )}
@@ -37,12 +40,15 @@ export function ItemPane({ id, onClose, onDeleted }: Props) {
   );
 }
 
-function ItemView({ id, onClose, onDeleted }: Props & { id: string }) {
+function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
   const versions = useVersions(id);
   const pending = versions.data?.some((v) => v.status === "pending") ?? false;
+  const latest = versions.data?.[0];
   const item = useItem(id, pending);
   const edits = useItemEdits(id);
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  useWhenProcessed(id, pending);
 
   const close = onClose && (
     <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
@@ -56,13 +62,28 @@ function ItemView({ id, onClose, onDeleted }: Props & { id: string }) {
     return (
       <>
         <div className="flex justify-end">{close}</div>
-        <Empty>{gone ? (pending ? "Being captured…" : "This item no longer exists.") : item.error.message}</Empty>
+        <Empty>
+          {!gone
+            ? item.error.message
+            : pending
+              ? "Being captured…"
+              : latest?.status === "failed"
+                ? `Capturing failed: ${latest.error ?? "unknown error"}`
+                : "This item no longer exists."}
+        </Empty>
       </>
     );
   }
 
   const it = item.data;
   const thought = it.media_type === "thought";
+  const captureAgain = () =>
+    edits.captureAgain.mutate(it.original_url!, {
+      onSuccess: (accepted) => {
+        toast("Capturing again. The new version shows here when it's processed.");
+        if (accepted.item_id !== id) onOpen(accepted.item_id);
+      },
+    });
   return (
     <article className="mx-auto grid max-w-[44rem] gap-[1.4rem]">
       <div className="flex items-center justify-between gap-4">
@@ -97,6 +118,17 @@ function ItemView({ id, onClose, onDeleted }: Props & { id: string }) {
               >
                 Copy link
               </DropdownMenuItem>
+              {thought ? (
+                <DropdownMenuItem disabled={editing} onSelect={() => setEditing(true)}>
+                  Edit Thought
+                </DropdownMenuItem>
+              ) : (
+                it.original_url && (
+                  <DropdownMenuItem disabled={pending || edits.captureAgain.isPending} onSelect={captureAgain}>
+                    Capture again
+                  </DropdownMenuItem>
+                )
+              )}
               <DropdownMenuItem variant="destructive" onSelect={() => setConfirming(true)}>
                 Delete item…
               </DropdownMenuItem>
@@ -138,8 +170,40 @@ function ItemView({ id, onClose, onDeleted }: Props & { id: string }) {
       </h1>
       <ItemTags item={it} edits={edits} />
 
+      {pending ? (
+        <Notice>Processing the new version. This updates by itself.</Notice>
+      ) : (
+        latest?.status === "failed" &&
+        (thought && latest.id === it.current_version_id ? (
+          <Notice>
+            Not enriched: its Tags and search by meaning still reflect an earlier version.{" "}
+            <button
+              type="button"
+              className="text-primary hover:underline"
+              disabled={edits.retry.isPending}
+              onClick={() => edits.retry.mutate()}
+            >
+              Retry
+            </button>
+          </Notice>
+        ) : (
+          !thought && <Notice>The latest capture failed, so this shows an earlier version.</Notice>
+        ))
+      )}
+
       {thought ? (
-        <p className="font-serif text-[1.02rem] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{it.text}</p>
+        editing ? (
+          <ThoughtEdit
+            item={it}
+            title={versions.data?.find((v) => v.id === it.current_version_id)?.title ?? ""}
+            edits={edits}
+            onDone={() => setEditing(false)}
+          />
+        ) : (
+          <p className="font-serif text-[1.02rem] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {it.text}
+          </p>
+        )
       ) : (
         <>
           <p className="font-serif text-[1.08rem] leading-[1.65]">{it.summary}</p>
@@ -171,6 +235,14 @@ function ItemView({ id, onClose, onDeleted }: Props & { id: string }) {
         </span>
       </div>
     </article>
+  );
+}
+
+function Notice({ children }: { children: ReactNode }) {
+  return (
+    <div role="status" className="rounded-lg bg-muted px-3.5 py-2.5 text-[0.9rem] text-muted-foreground">
+      {children}
+    </div>
   );
 }
 

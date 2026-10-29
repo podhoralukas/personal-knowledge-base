@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MenuIcon } from "lucide-react";
+import { MenuIcon, PlusIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, unwrap } from "@/api/client";
 import { useItemList } from "@/api/queries";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useFilters } from "@/lib/filters";
 import { useDebounced, useMediaQuery } from "@/lib/hooks";
+import { AddDialog } from "./AddDialog";
 import { ItemList } from "./ItemList";
 import { ItemPane } from "./ItemPane";
 import { Sidebar } from "./Sidebar";
@@ -24,6 +25,9 @@ export function Shell() {
   const list = useItemList(filters, q);
   const [drawer, setDrawer] = useState(false);
   const [sidebar, setSidebar] = useState(false);
+  const [adding, setAdding] = useState(false);
+  // A new Capture joins the list only once it is enriched; until then it stays open anyway.
+  const [added, setAdded] = useState<string>();
   const searchRef = useRef<HTMLInputElement>(null);
   const items = list.data?.items;
 
@@ -34,13 +38,23 @@ export function Shell() {
     },
     [change, wide],
   );
+  const opened = (id: string) => {
+    setAdded(id);
+    select(id);
+  };
 
   // Three panes always show an Item: the first one when the selected one is not in the list.
   useEffect(() => {
-    if (wide && items?.length && !list.isPlaceholderData && !items.some((i) => i.id === filters.item)) {
+    if (
+      wide &&
+      items?.length &&
+      !list.isPlaceholderData &&
+      (!added || filters.item !== added) &&
+      !items.some((i) => i.id === filters.item)
+    ) {
       change({ item: items[0].id });
     }
-  }, [wide, items, list.isPlaceholderData, filters.item, change]);
+  }, [wide, items, list.isPlaceholderData, filters.item, added, change]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -72,7 +86,7 @@ export function Shell() {
 
   return (
     <div className="flex h-svh flex-col overflow-hidden px-4">
-      <Header onFilters={narrow ? () => setSidebar(true) : undefined} />
+      <Header onFilters={narrow ? () => setSidebar(true) : undefined} onAdd={() => setAdding(true)} />
       <div
         className={
           wide
@@ -95,7 +109,7 @@ export function Shell() {
         </Panel>
         {wide && (
           <Panel label="Selected item">
-            <ItemPane id={filters.item} onDeleted={deleted} />
+            <ItemPane id={filters.item} onOpen={opened} onDeleted={deleted} />
           </Panel>
         )}
       </div>
@@ -104,10 +118,11 @@ export function Shell() {
         <Sheet open={drawer && !!filters.item} onOpenChange={setDrawer}>
           <SheetContent side="right" showCloseButton={false} aria-describedby={undefined} className="w-full gap-0 p-0 sm:max-w-[46rem]">
             <SheetTitle className="sr-only">Selected item</SheetTitle>
-            <ItemPane id={filters.item} onClose={() => setDrawer(false)} onDeleted={deleted} />
+            <ItemPane id={filters.item} onOpen={opened} onClose={() => setDrawer(false)} onDeleted={deleted} />
           </SheetContent>
         </Sheet>
       )}
+      <AddDialog open={adding} onOpenChange={setAdding} onAdded={opened} />
       {narrow && (
         <Sheet open={sidebar} onOpenChange={setSidebar}>
           <SheetContent side="left" aria-describedby={undefined} className="w-[min(18rem,86%)] gap-0 p-0 pt-8">
@@ -128,7 +143,7 @@ function Panel({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Header({ onFilters }: { onFilters?: () => void }) {
+function Header({ onFilters, onAdd }: { onFilters?: () => void; onAdd: () => void }) {
   const queryClient = useQueryClient();
   const logout = useMutation({
     mutationFn: async () => unwrap(await api.POST("/auth/logout")),
@@ -158,6 +173,10 @@ function Header({ onFilters }: { onFilters?: () => void }) {
         </nav>
       )}
       <span className="flex-1" />
+      <Button onClick={onAdd}>
+        <PlusIcon />
+        <span className={onFilters ? "sr-only" : undefined}>Add</span>
+      </Button>
       <Button variant="ghost" onClick={() => logout.mutate()}>
         Log out
       </Button>

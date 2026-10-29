@@ -110,3 +110,81 @@ test("an Item that is gone says so", async () => {
   await open("/app/?item=nope").catch(() => {});
   expect(await pane().findByText("This item no longer exists.")).toBeInTheDocument();
 });
+
+const THOUGHT = item({
+  id: "t1",
+  media_type: "thought",
+  original_url: null,
+  title: "Soup plan",
+  text: "Lentils on Monday",
+});
+
+test("Edit Thought starts from what is shown and saves a new version", async () => {
+  const api = fakeApi({ items: [THOUGHT], tags: TAGS, versions: [version(THOUGHT, { title: "Soup plan", text: "Lentils on Monday" })] });
+  await open("/app/?item=t1");
+
+  await userEvent.click(pane().getByRole("button", { name: "More actions" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: "Edit Thought" }));
+  const form = within(pane().getByRole("form", { name: "Edit Thought" }));
+  expect(form.getByRole("textbox", { name: "Title (optional)" })).toHaveValue("Soup plan");
+  const text = form.getByRole("textbox", { name: "Text" });
+  expect(text).toHaveValue("Lentils on Monday");
+
+  await userEvent.clear(text);
+  await userEvent.type(text, "Lentils on Tuesday");
+  await userEvent.click(form.getByRole("button", { name: "Save as new version" }));
+
+  expect(await pane().findByText("Lentils on Tuesday")).toBeInTheDocument();
+  expect(pane().queryByRole("form", { name: "Edit Thought" })).not.toBeInTheDocument();
+  expect(pane().getByRole("status")).toHaveTextContent("Processing the new version.");
+  expect(api.bodies).toEqual([
+    { method: "PUT", path: "/thoughts/t1", body: { title: "Soup plan", text: "Lentils on Tuesday" } },
+  ]);
+});
+
+test("a rejected Thought edit says why in the form", async () => {
+  fakeApi({ items: [THOUGHT], tags: TAGS });
+  await open("/app/?item=t1");
+
+  await userEvent.click(pane().getByRole("button", { name: "More actions" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: "Edit Thought" }));
+  const form = within(pane().getByRole("form", { name: "Edit Thought" }));
+  await userEvent.clear(form.getByRole("textbox", { name: "Text" }));
+  await userEvent.type(form.getByRole("textbox", { name: "Text" }), "   ");
+  await userEvent.click(form.getByRole("button", { name: "Save as new version" }));
+
+  expect(await form.findByRole("alert")).toHaveTextContent("Could not save it: Value error, text is empty");
+});
+
+test("Capture again fetches the article's page as a new version", async () => {
+  const api = fakeApi({ items: [ARTICLE], tags: TAGS });
+  await open();
+
+  await userEvent.click(pane().getByRole("button", { name: "More actions" }));
+  expect(screen.queryByRole("menuitem", { name: "Edit Thought" })).not.toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("menuitem", { name: "Capture again" }));
+
+  expect(await pane().findByRole("status")).toHaveTextContent("Processing the new version.");
+  expect(api.bodies).toEqual([
+    { method: "POST", path: "/capture", body: { url: "https://www.example.com/a1", channel: "manual", note: "" } },
+  ]);
+});
+
+test("a Thought whose current version failed offers Retry", async () => {
+  const api = fakeApi({ items: [THOUGHT], tags: TAGS, versions: [version(THOUGHT, { status: "failed", error: "timeout" })] });
+  await open("/app/?item=t1");
+
+  expect(pane().getByRole("status")).toHaveTextContent("Not enriched");
+  await userEvent.click(pane().getByRole("button", { name: "Retry" }));
+
+  await waitFor(() => expect(pane().getByRole("status")).toHaveTextContent("Processing the new version."));
+  expect(api.versions[0].status).toBe("pending");
+});
+
+test("a new Capture whose processing failed says so", async () => {
+  const gone = item({ id: "c1", title: "" });
+  fakeApi({ items: [], tags: TAGS, versions: [version(gone, { status: "failed", error: "no text in the page" })] });
+  await open("/app/?item=c1").catch(() => {});
+
+  expect(await pane().findByText("Capturing failed: no text in the page")).toBeInTheDocument();
+});
