@@ -221,9 +221,8 @@ class Annotations(BaseModel):
         return sorted((set(pipeline_tags) | set(self.owner_tags)) - set(self.rejected_tags))
 
 
-class Item(BaseModel):
-    """Current view of one Item plus owner annotations: an article's newest enriched Version, a Thought's
-    newest Version with the tags and embedding of its newest enriched one."""
+class ItemView(BaseModel):
+    """An Item as API clients see it: everything but the embedding, which only search uses."""
 
     id: str
     normalised_url: str | None = None
@@ -238,8 +237,14 @@ class Item(BaseModel):
     text: str | None = None
     tags: list[str] = Field(default_factory=list)
     taxonomy_version: int = 0
-    embedding: list[float] | None = None
     annotations: Annotations = Field(default_factory=Annotations)
+
+
+class Item(ItemView):
+    """Current view of one Item plus owner annotations: an article's newest enriched Version, a Thought's
+    newest Version with the tags and embedding of its newest enriched one."""
+
+    embedding: list[float] | None = None
 
     @classmethod
     def from_version(cls, version: Version, previous: "Item | None" = None) -> "Item":
@@ -300,7 +305,7 @@ class Item(BaseModel):
         return self.model_copy(update={"annotations": annotations, "tags": annotations.tags(pipeline_tags)})
 
 
-class Match(Item):
+class Match(ItemView):
     """An Item a search found, with its score relative to the other results of that search."""
 
     score: float

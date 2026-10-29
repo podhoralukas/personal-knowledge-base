@@ -99,7 +99,7 @@ def test_search_returns_items_and_needs_a_token(client):
     body = r.json()
     assert body["semantic"] is True
     assert [i["id"] for i in body["items"]] == [ids["item_id"]]
-    assert body["items"][0]["embedding"] is None
+    assert "embedding" not in body["items"][0]
     assert client.get("/search", params={"q": "x"}).status_code == 401
     assert client.get("/search", params={"q": ""}, headers=AUTH).status_code == 422
 
@@ -197,7 +197,7 @@ def test_untagged_list_then_retag(client, llm):
     ids = capture(client)
     untagged = client.get("/items/untagged", headers=AUTH).json()
     assert [i["id"] for i in untagged] == [ids["item_id"]]
-    assert untagged[0]["embedding"] is None
+    assert "embedding" not in untagged[0]
 
     client.post("/taxonomy/tags", json={"path": "ai"}, headers=AUTH)
     llm.answers = [Tagging(tags=["ai"])]
@@ -358,3 +358,136 @@ class TestDeleteVersion:
         r = client.delete(f"/versions/{ids['version_id']}", headers=AUTH)
         assert r.status_code == 409 and "delete the item instead" in r.json()["detail"]
         assert client.delete("/versions/nope", headers=AUTH).status_code == 404
+
+
+class TestItemList:
+    def test_newest_first_filtered_by_tag_kind_and_date(self, client, llm):
+        client.post("/taxonomy/tags", json={"path": "ai"}, headers=AUTH)
+        client.post("/taxonomy/tags", json={"path": "ai/rag"}, headers=AUTH)
+        llm.answers.append(Tagging(tags=["ai/rag"]))
+        article = capture(client)["item_id"]
+        llm.answers = [Tagging(tags=[])]
+        thought = client.post("/thoughts", json={"text": "Soup"}, headers=AUTH).json()["item_id"]
+
+        def listed(**params) -> list[str]:
+            r = client.get("/items", params=params, headers=AUTH)
+            assert r.status_code == 200
+            return [i["id"] for i in r.json()]
+
+        assert listed() == [thought, article]
+        assert listed(tag="ai") == [article]  # sub-tags included
+        assert listed(kind="thought") == [thought]
+        assert listed(**{"from": "2000-01-01"}) == [thought, article]
+        assert listed(to="2000-01-01") == []
+        assert "embedding" not in client.get("/items", headers=AUTH).json()[0]
+
+        r = client.get("/items", params={"from": "2026-10-06", "to": "2026-10-05"}, headers=AUTH)
+        assert (r.status_code, r.json()["detail"]) == (422, "the start date is after the end date")
+        assert client.get("/items").status_code == 401
+
+    def test_untagged_by_date(self, client):
+        ids = capture(client)
+        assert [i["id"] for i in client.get("/items/untagged?from=2000-01-01", headers=AUTH).json()] == [ids["item_id"]]
+        assert client.get("/items/untagged?to=2000-01-01", headers=AUTH).json() == []
+
+
+def test_no_embeddings_in_item_and_version_responses(client):
+    ids = capture(client)
+    assert "embedding" not in client.get(f"/items/{ids['item_id']}", headers=AUTH).json()
+    assert "embedding" not in client.put(f"/items/{ids['item_id']}/notes", json={"notes": "x"}, headers=AUTH).json()
+    version = client.get(f"/versions/{ids['version_id']}", headers=AUTH).json()
+    assert version["enrichment"]["title"] == "Hello" and "embedding" not in version["enrichment"]
+    versions = client.get(f"/items/{ids['item_id']}/versions", headers=AUTH).json()
+    assert "embedding" not in versions[0]["enrichment"]
+
+
+def test_taxonomy_stats(client, llm):
+    for path in ("ai", "ai/rag", "cooking"):
+        client.post("/taxonomy/tags", json={"path": path}, headers=AUTH)
+    llm.answers.append(Tagging(tags=["ai/rag"]))
+    capture(client)
+    llm.answers += [Summary(title="Other", summary="Other."), Tagging(tags=[])]
+    capture(client, "https://example.com/b")
+
+    r = client.get("/taxonomy/stats", headers=AUTH)
+    assert r.json() == {
+        "items": 2,
+        "untagged": 1,
+        "counts": {"ai": 1, "ai/rag": 1, "cooking": 0},
+        "deletable": ["cooking"],
+    }
+    assert client.get("/taxonomy/stats").status_code == 401
+
+
+class TestCookieLogin:
+    CSRF = {"X-KB-CSRF": "1"}
+
+    def test_login_sets_a_strict_http_only_cookie(self, client):
+        r = client.post("/auth/login", json={"token": "secret"})
+        assert r.status_code == 204
+        cookie = r.headers["set-cookie"]
+        assert cookie.startswith("kb_token=secret;")
+        assert "HttpOnly" in cookie and "SameSite=strict" in cookie
+
+    def test_wrong_token_sets_no_cookie(self, client):
+        r = client.post("/auth/login", json={"token": "wrong"})
+        assert r.status_code == 401 and "set-cookie" not in r.headers
+
+    def test_the_cookie_needs_the_csrf_header(self, client):
+        client.post("/auth/login", json={"token": "secret"})
+        assert client.get("/taxonomy").status_code == 401
+        assert client.get("/taxonomy", headers=self.CSRF).status_code == 200
+
+    def test_a_wrong_cookie_is_rejected(self, client):
+        client.cookies.set("kb_token", "wrong")
+        assert client.get("/taxonomy", headers=self.CSRF).status_code == 401
+
+    def test_logout_clears_the_cookie(self, client):
+        client.post("/auth/login", json={"token": "secret"})
+        assert client.post("/auth/logout").status_code == 204
+        assert client.get("/taxonomy", headers=self.CSRF).status_code == 401
+
+    def test_websites_may_not_send_the_csrf_header(self, client):
+        preflight = {
+            "Origin": "https://evil.example",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-kb-csrf",
+        }
+        assert "access-control-allow-origin" not in client.options("/taxonomy", headers=preflight).headers
+
+
+class TestWebApp:
+    @pytest.fixture
+    def serving(self, monkeypatch, llm):
+        """A client of the app serving the React build from `dist`."""
+
+        def client(dist):
+            monkeypatch.setattr("kb.app.WEB_DIST_DIR", dist)
+            app = create_app(Settings(api_token="secret", _env_file=None), pipeline=Pipeline(MemoryStorage(), llm))
+            return TestClient(app)
+
+        return client
+
+    @pytest.fixture
+    def web(self, tmp_path, serving):
+        (tmp_path / "assets").mkdir()
+        (tmp_path / "index.html").write_text("<div id=root></div>")
+        (tmp_path / "assets" / "index-abc123.js").write_text("console.log(1)")
+        with serving(tmp_path) as client:
+            yield client
+
+    def test_serves_the_built_app_without_a_login(self, web):
+        r = web.get("/app/")
+        assert (r.status_code, r.text, r.headers["cache-control"]) == (200, "<div id=root></div>", "no-cache")
+        r = web.get("/app/assets/index-abc123.js")
+        assert r.status_code == 200 and "cache-control" not in r.headers
+
+    def test_app_routes_get_index_html_but_missing_files_are_404(self, web):
+        assert web.get("/app/taxonomy").text == "<div id=root></div>"
+        assert web.get("/app/assets/gone.js").status_code == 404
+
+    def test_a_missing_build_says_so(self, tmp_path, serving):
+        with serving(tmp_path / "missing") as client:
+            for path in ("/app/", "/app/taxonomy"):
+                r = client.get(path)
+                assert r.status_code == 404 and "npm run build" in r.json()["detail"]

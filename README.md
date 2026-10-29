@@ -38,7 +38,7 @@ Each capture creates a new **Version** of an **Item** (one Item per normalised U
 - [Docker](https://docs.docker.com/get-docker/) with the Compose plugin (Docker Desktop on Windows), which runs OpenSearch and the app
 - Python **3.12** (exactly 3.12; 3.13 is not supported yet), for the tests and the setup script's tooling
 - An API key for an OpenAI-compatible LLM endpoint (OpenAI by default; see [Configuration](#configuration))
-- Node.js 22+, only if you want to build the browser extension
+- Node.js 24, to build the web app (and the browser extension)
 
 The default models (`gpt-4o-mini` and `text-embedding-3-small`) cost a fraction of a cent per captured page.
 
@@ -68,7 +68,7 @@ Open `.env` and set two values:
 ./setup.sh
 ```
 
-The script creates a `.venv` with Python 3.12 for the tests, builds and starts OpenSearch and the app with Docker Compose, waits until the app is up, and configures backups (see [Backups](#backups)). It is safe to run again. If you skipped step 2, it creates `.env` for you and stops so you can fill it in.
+The script creates a `.venv` with Python 3.12 for the tests, builds and starts OpenSearch and the app with Docker Compose, waits until the app is up, builds the web app, and configures backups (see [Backups](#backups)). It is safe to run again. If you skipped step 2, it creates `.env` for you and stops so you can fill it in.
 
 If `python3` on your machine is not 3.12, create the virtual environment yourself first; the script reuses an existing `.venv`:
 
@@ -88,6 +88,8 @@ To stop it: `docker compose stop` (it stays stopped until `docker compose start`
 ### Development
 
 The app container runs the source from this folder with `uvicorn --reload`, so a change in `kb/` is live within a second; a broken edit stops the app until it is fixed (`docker compose logs -f app`). After changing dependencies in `pyproject.toml`, rebuild with `docker compose up -d --build`. Tests run from the `.venv` (`.venv/bin/pytest`); the OpenSearch tests use `test_`-prefixed indices in the same cluster and delete them afterwards.
+
+The new web app (React + TypeScript, being built to replace `/ui`, see [ADR-0004](docs/adr/0004-react-frontend-over-the-json-api.md)) lives in `web/`. The app serves its build from `web/dist` at <http://localhost:8000/app>; `npm run build` in `web/` makes a change live without a restart. The build first regenerates the API types (`src/api/schema.d.ts`) from the running app's `/openapi.json`, so a backend model change that breaks the frontend fails the build; `npm run api` does only that step. While working on the frontend, `npm run dev` serves it with hot reload at <http://localhost:5173/app/>, passing API calls to `:8000`. Tests (`npm test`) run offline with Vitest against a mocked API (MSW).
 
 ### Backups
 
@@ -162,7 +164,7 @@ Then ask, for example, "what do I have on Hamilton from this week?" or "save thi
 
 ### HTTP API
 
-The full API is described in the OpenAPI (Swagger) spec at <http://localhost:8000/openapi.json>, browsable at <http://localhost:8000/docs>. Every endpoint needs `Authorization: Bearer $API_TOKEN`.
+The full API is described in the OpenAPI (Swagger) spec at <http://localhost:8000/openapi.json>, browsable at <http://localhost:8000/docs>. Every endpoint needs `Authorization: Bearer $API_TOKEN`. The web app instead logs in through `POST /auth/login`, which sets an HttpOnly cookie; the API accepts that cookie only on requests that also carry the `X-KB-CSRF` header, which another website cannot add.
 
 ## Configuration
 

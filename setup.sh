@@ -18,6 +18,7 @@ JSON='Content-Type: application/json'
 
 command -v docker   >/dev/null 2>&1 || err "Docker is not installed. See https://docs.docker.com/get-docker/"
 command -v python3  >/dev/null 2>&1 || err "Python 3 is not installed."
+command -v npm      >/dev/null 2>&1 || err "Node.js is not installed; the web app is built with it (Node 24)."
 docker compose version >/dev/null 2>&1 || err "Docker Compose plugin not found. Update Docker Desktop or install the plugin."
 
 # ── .env ─────────────────────────────────────────────────────────────────────
@@ -69,6 +70,12 @@ echo
 curl -sf -X PUT "$OPENSEARCH/$INDICES/_settings" -H "$JSON" \
   -d '{"index.number_of_replicas": 0}' >/dev/null
 
+# ── Web app: built into web/dist, which the app serves at /app ───────────────
+
+# The build generates the API types from the running app's /openapi.json, so it comes after the app is up.
+info "Building the web app..."
+(cd web && npm ci --silent && npm run build --silent >/dev/null)
+
 # ── Backups: snapshot repository + snapshot-management policy ────────────────
 
 info "Configuring backups into ${BACKUP_DIR:-./backups}..."
@@ -96,4 +103,5 @@ info "Setup complete. The Knowledge Base runs at $APP and restarts with Docker."
 echo
 echo "  Start Docker Desktop at sign-in (Settings → General) so it is always up."
 echo "  Code changes in kb/ reload live; after changing dependencies run: docker compose up -d --build"
+echo "  The web app (/app) is live after: cd web && npm run build"
 echo "  Logs: docker compose logs -f app"
