@@ -39,7 +39,7 @@ export function unwrap<T>(result: { data?: T; error?: unknown; response: Respons
 function detail(error: unknown): string | undefined {
   const detail = (error as { detail?: unknown } | undefined)?.detail;
   if (typeof detail === "string") return detail;
-  if (Array.isArray(detail) && typeof detail[0]?.msg === "string") return detail[0].msg; // FastAPI's 422
+  if (Array.isArray(detail) && typeof detail[0]?.msg === "string") return detail[0].msg.replace(/^Value error, /, "");
   return undefined;
 }
 

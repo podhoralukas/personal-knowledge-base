@@ -268,7 +268,7 @@ export function fakeApi(
       const it = find(String(params.id));
       if (!it) return missing();
       const t = await sent<{ title: string; text: string }>(request);
-      if (!t.text.trim()) return HttpResponse.json({ detail: [{ msg: "Value error, text is empty" }] }, { status: 422 });
+      if (!t.text.trim()) return HttpResponse.json({ detail: [{ msg: "Value error, a Thought needs some text" }] }, { status: 422 });
       Object.assign(it, { title: t.title || t.text.split("\n")[0], text: t.text });
       const response = pending(it.id, { channel: "written", kind: "thought", title: t.title, text: t.text });
       it.current_version_id = state.versions.at(-1)!.id;

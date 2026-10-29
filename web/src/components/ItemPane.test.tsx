@@ -153,7 +153,7 @@ test("a rejected Thought edit says why in the form", async () => {
   await userEvent.type(form.getByRole("textbox", { name: "Text" }), "   ");
   await userEvent.click(form.getByRole("button", { name: "Save as new version" }));
 
-  expect(await form.findByRole("alert")).toHaveTextContent("Could not save it: Value error, text is empty");
+  expect(await form.findByRole("alert")).toHaveTextContent("Could not save it: a Thought needs some text");
 });
 
 test("Capture again fetches the article's page as a new version", async () => {
