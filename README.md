@@ -9,6 +9,15 @@ The app uses manually added system of tags, which you should manually define bef
 
 Each capture uses single LLM API call to summarize the information for storing, and then another one to construct the vector for semantic search. Your custom OpenAI API key has to be added to the env variables once running locally. 
 
+
+Capturing an article with the browser extension, with two tags picked by hand:
+
+![The extension's popup over a news article: tag checkboxes, an optional note and the Capture button](docs/images/capture_extension.png)
+
+The web app: the saved items and the selected article's summary and key points:
+
+![The web app's Items page: tag tree with counts, the list of saved articles and the selected article's summary, tags and key points](docs/images/knowledge_base_frontend.png)
+
 Extent of use of AI to create this app - Claude Code was used to write the code. The domain design and architectural decisions were done by myself. 
 
 ### Possible next development steps:
