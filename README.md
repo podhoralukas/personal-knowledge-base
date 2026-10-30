@@ -77,7 +77,7 @@ python3.12 -m venv .venv
 ./setup.sh
 ```
 
-Open <http://localhost:8000/app> and sign in with your `API_TOKEN`. The OpenSearch indices are created when the app first starts. (The older web UI is still at <http://localhost:8000>, which redirects to `/ui`, until the new one replaces it.)
+Open <http://localhost:8000/app> and sign in with your `API_TOKEN`. The OpenSearch indices are created when the app first starts. (The older web UI is still at <http://localhost:8000/ui> until the new one replaces it. <http://localhost:8000> and the links the extension and MCP tools give for an Item open the web app, or `/ui` while `web/dist` is not built.)
 
 **4. Keep it running**
 

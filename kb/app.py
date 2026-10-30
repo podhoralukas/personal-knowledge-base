@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import PurePosixPath
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -105,6 +106,11 @@ class TaxonomyStats(BaseModel):
     retag_candidates: int = Field(description="Items a re-tag without `all` reaches (POST /taxonomy/retag)")
 
 
+def web_app_built() -> bool:
+    """Read per request, so `npm run build` switches links over without a restart."""
+    return (WEB_DIST_DIR / "index.html").is_file()
+
+
 class WebApp(StaticFiles):
     """The built React app. A path without a file extension gets index.html, so the app's own routes load."""
 
@@ -191,7 +197,14 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
 
     @app.get("/", include_in_schema=False)
     def root() -> RedirectResponse:
-        return RedirectResponse("/ui", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(f"{WEB_PATH}/" if web_app_built() else "/ui", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.get("/open/items/{item_id}", include_in_schema=False)
+    def open_item(item_id: str) -> RedirectResponse:
+        """Where links to an Item point (the extension, MCP results): the web app, or /ui while it is not built."""
+        item = quote(item_id, safe="")
+        target = f"{WEB_PATH}/?item={item}" if web_app_built() else f"/ui/items/{item}"
+        return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
 
     @app.get("/health")
     def health() -> dict[str, str]:

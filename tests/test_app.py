@@ -468,7 +468,7 @@ class TestWebApp:
         def client(dist):
             monkeypatch.setattr("kb.app.WEB_DIST_DIR", dist)
             app = create_app(Settings(api_token="secret", _env_file=None), pipeline=Pipeline(MemoryStorage(), llm))
-            return TestClient(app)
+            return TestClient(app, follow_redirects=False)
 
         return client
 
@@ -495,3 +495,20 @@ class TestWebApp:
             for path in ("/app/", "/app/taxonomy"):
                 r = client.get(path)
                 assert r.status_code == 404 and "npm run build" in r.json()["detail"]
+
+    def test_links_open_the_built_app(self, web):
+        assert web.get("/").headers["location"] == "/app/"
+        r = web.get("/open/items/abc")
+        assert (r.status_code, r.headers["location"]) == (303, "/app/?item=abc")
+
+    def test_links_fall_back_to_the_old_ui_without_a_build(self, tmp_path, serving):
+        with serving(tmp_path / "missing") as client:
+            assert client.get("/").headers["location"] == "/ui"
+            r = client.get("/open/items/abc")
+            assert (r.status_code, r.headers["location"]) == (303, "/ui/items/abc")
+
+    def test_a_build_goes_live_without_a_restart(self, tmp_path, serving):
+        with serving(tmp_path) as client:
+            assert client.get("/open/items/abc").headers["location"] == "/ui/items/abc"
+            (tmp_path / "index.html").write_text("<div id=root></div>")
+            assert client.get("/open/items/abc").headers["location"] == "/app/?item=abc"

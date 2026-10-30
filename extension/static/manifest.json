@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Knowledge Base",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Capture the page you are reading into your Knowledge Base.",
   "action": {
     "default_popup": "popup.html",

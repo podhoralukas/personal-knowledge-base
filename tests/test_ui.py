@@ -69,10 +69,6 @@ def item_id(storage, title: str) -> str:
 
 
 class TestLogin:
-    def test_root_redirects_to_ui(self, anonymous):
-        r = anonymous.get("/")
-        assert (r.status_code, r.headers["location"]) == (303, "/ui")
-
     def test_pages_redirect_to_login(self, anonymous):
         r = anonymous.get("/ui")
         assert (r.status_code, r.headers["location"]) == (303, "/ui/login?next=/ui")

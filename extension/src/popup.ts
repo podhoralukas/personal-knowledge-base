@@ -14,7 +14,7 @@ async function init(): Promise<void> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   title.textContent = tab?.title ?? "";
   const settings = await loadSettings();
-  linkTo(openKb, `${settings.server}/ui`);
+  linkTo(openKb, `${settings.server}/`);
   if (!settings.token) {
     show("Set the server and token in the options first.", "error");
     button.textContent = "Open options";

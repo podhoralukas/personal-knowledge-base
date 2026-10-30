@@ -19,10 +19,10 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-test("capture posts the page with the token and returns the Item's UI page", async () => {
+test("capture posts the page with the token and returns the link that opens the Item", async () => {
   respond(202, { item_id: "abc", version_id: "abc:t" });
   const itemUrl = await capture(SETTINGS, PAGE, ["ai/rag"], "for the RAG talk", new Date("2026-10-05T10:00:00Z"));
-  assert.equal(itemUrl, "http://localhost:8000/ui/items/abc");
+  assert.equal(itemUrl, "http://localhost:8000/open/items/abc");
   assert.equal(calls[0].url, "http://localhost:8000/capture");
   assert.equal(calls[0].init.method, "POST");
   assert.deepEqual(calls[0].init.headers, { Authorization: "Bearer secret", "Content-Type": "application/json" });
