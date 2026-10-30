@@ -39,7 +39,7 @@ VENV=".venv"
 
 if [ ! -d "$VENV" ]; then
   info "Creating Python virtual environment ($VENV)..."
-  python3 -m venv "$VENV"
+  python3.12 -m venv "$VENV"
 fi
 
 info "Installing Python dependencies..."
