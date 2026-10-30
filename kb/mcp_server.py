@@ -116,7 +116,7 @@ class BearerGuard:
 
 
 def item_link(base_url: str, item_id: str) -> str:
-    return f"{base_url.rstrip('/')}/ui/items/{item_id}"
+    return f"{base_url.rstrip('/')}/open/items/{item_id}"
 
 
 def mcp_server(pipeline: Callable[[], Pipeline], background: Background) -> FastMCP:

@@ -7,7 +7,7 @@ export interface Settings {
 
 export class ApiError extends Error {}
 
-/** Send the page to POST /capture; returns the Item's UI page. Picked `tags` replace the automatic tagging;
+/** Send the page to POST /capture; returns the link that opens the Item. Picked `tags` replace the automatic tagging;
  * the `note` goes below the Item's Note. */
 export async function capture(
   settings: Settings,
@@ -19,7 +19,7 @@ export async function capture(
   const body = { url: page.url, content: page.html, captured_at: now.toISOString(), channel: "extension", tags, note };
   const response = await request(settings, "/capture", { method: "POST", body: JSON.stringify(body) });
   const { item_id } = (await response.json()) as { item_id: string };
-  return `${settings.server}/ui/items/${item_id}`;
+  return `${settings.server}/open/items/${item_id}`;
 }
 
 /** Tag paths in tree order (parents before their children). */

@@ -263,7 +263,7 @@ def test_hybrid_search_finds_keyword_and_vector_matches_first(storage, corpus):
     results = storage.search("navier stokes", axis(0))
     assert {i.id for i in results[:2]} == {twin.id, keyword.id}
     assert [i.id for i in results[2:]] in ([], [neither.id])
-    assert all(i.embedding is None for i in results)
+    assert all("embedding" not in i.model_dump() for i in results)
 
 
 def test_search_filters_by_tag_subtree(storage, corpus):

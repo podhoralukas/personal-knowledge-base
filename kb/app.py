@@ -4,24 +4,41 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
+from pathlib import PurePosixPath
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Route
+from starlette.types import Scope
 
 from kb.auth import valid_token
-from kb.config import EXTENSION_ORIGINS, MCP_PATH, NOTE_MAX_CHARS, STATIC_DIR, Settings, get_settings
+from kb.config import (
+    CSRF_HEADER,
+    EXTENSION_ORIGINS,
+    MCP_PATH,
+    NOTE_MAX_CHARS,
+    STATIC_DIR,
+    UI_TOKEN_COOKIE,
+    UI_TOKEN_COOKIE_MAX_AGE,
+    WEB_DIST_DIR,
+    WEB_PATH,
+    Settings,
+    get_settings,
+)
 from kb.llm import LLMClient
 from kb.mcp_server import Background, BearerGuard, mcp_server
 from kb.models import (
     CaptureRequest,
     DateRange,
     Item,
+    ItemView,
     Kind,
     Tag,
     Taxonomy,
@@ -37,12 +54,18 @@ from kb.pipeline.run import Pipeline
 from kb.search import SearchResults, search
 from kb.storage import TagExists
 from kb.storage.opensearch import OpenSearchStorage
-from kb.taxonomy import TagNotFound, add_tag, delete_tag, describe_tag, rename_tag, retag_targets
+from kb.taxonomy import TagNotFound, add_tag, deletable_tags, delete_tag, describe_tag, rename_tag, retag_targets
 from kb.ui import ui_router
 from kb.versions import LastVersion, delete_version
 
 log = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
+NO_EMBEDDING = {"enrichment": {"embedding"}}  # a Version's; never meant for clients, like an Item's
+NO_EMBEDDINGS = {"__all__": NO_EMBEDDING}
+
+
+class Login(BaseModel):
+    token: str
 
 
 class Accepted(BaseModel):
@@ -75,6 +98,40 @@ class RetagAccepted(BaseModel):
     item_count: int
 
 
+class TaxonomyStats(BaseModel):
+    items: int
+    untagged: int
+    counts: dict[str, int] = Field(description="Items under each Tag, sub-tags included")
+    deletable: list[str] = Field(description="Tags nothing uses and without sub-tags")
+    retag_candidates: int = Field(description="Items a re-tag without `all` reaches (POST /taxonomy/retag)")
+
+
+def web_app_built() -> bool:
+    """Read per request, so `npm run build` switches links over without a restart."""
+    return (WEB_DIST_DIR / "index.html").is_file()
+
+
+class WebApp(StaticFiles):
+    """The built React app. A path without a file extension gets index.html, so the app's own routes load."""
+
+    async def check_config(self) -> None:
+        """A missing build is answered with a 404 that says so, not a server error."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != status.HTTP_404_NOT_FOUND or PurePosixPath(path).suffix:
+                raise
+            try:
+                response = await super().get_response("index.html", scope)
+            except StarletteHTTPException:
+                raise StarletteHTTPException(404, "the web app is not built: run `npm run build` in web/")
+        if not path.startswith("assets/"):  # Vite's assets have hashed names; anything else may change
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app(settings: Settings | None = None, pipeline: Pipeline | None = None) -> FastAPI:
     """`pipeline` is injected by tests; in production it is built from settings on startup."""
     settings = settings or get_settings()
@@ -102,27 +159,74 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         allow_headers=["Authorization", "Content-Type"],
     )
 
-    def authenticated(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> None:
-        if not valid_token(settings.api_token, credentials.credentials if credentials else None):
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid or missing bearer token")
+    def authenticated(
+        request: Request, credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
+    ) -> None:
+        """A bearer token (extension, MCP, scripts), or the web app's login cookie sent with the CSRF header."""
+        if credentials:
+            given = credentials.credentials
+        elif request.headers.get(CSRF_HEADER):
+            given = request.cookies.get(UI_TOKEN_COOKIE)
+        else:
+            given = None
+        if not valid_token(settings.api_token, given):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid or missing token")
+
+    def saved_range(
+        start: Annotated[date | None, Query(alias="from", description="Saved on or after (UTC day)")] = None,
+        end: Annotated[date | None, Query(alias="to", description="Saved on or before (UTC day)")] = None,
+    ) -> DateRange:
+        try:
+            return DateRange(start=start, end=end)
+        except ValidationError as exc:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors()[0]["msg"].removeprefix("Value error, ")
+            )
 
     def get_pipeline(request: Request) -> Pipeline:
         return request.app.state.pipeline
 
     Auth = Annotated[None, Depends(authenticated)]
     Pipe = Annotated[Pipeline, Depends(get_pipeline)]
+    Saved = Annotated[DateRange, Depends(saved_range)]
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.mount(WEB_PATH, WebApp(directory=WEB_DIST_DIR, html=True, check_dir=False), name="web")
     app.include_router(ui_router(settings))
     app.router.routes.append(Route(MCP_PATH, BearerGuard(mcp_endpoint, settings.api_token)))
 
     @app.get("/", include_in_schema=False)
     def root() -> RedirectResponse:
-        return RedirectResponse("/ui", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(f"{WEB_PATH}/" if web_app_built() else "/ui", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.get("/open/items/{item_id}", include_in_schema=False)
+    def open_item(item_id: str) -> RedirectResponse:
+        """Where links to an Item point (the extension, MCP results): the web app, or /ui while it is not built."""
+        item = quote(item_id, safe="")
+        target = f"{WEB_PATH}/?item={item}" if web_app_built() else f"/ui/items/{item}"
+        return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/auth/login", status_code=status.HTTP_204_NO_CONTENT)
+    def login(body: Login, request: Request, response: Response) -> None:
+        """The web app's login: sets an HttpOnly cookie holding the token, so page code never sees it."""
+        if not valid_token(settings.api_token, body.token):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong token")
+        response.set_cookie(
+            UI_TOKEN_COOKIE,
+            body.token,
+            max_age=UI_TOKEN_COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="strict",
+            secure=request.url.scheme == "https",
+        )
+
+    @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+    def logout(response: Response) -> None:
+        response.delete_cookie(UI_TOKEN_COOKIE)
 
     @app.post("/capture", status_code=status.HTTP_202_ACCEPTED, response_model=Accepted)
     async def capture(request: CaptureRequest, background: BackgroundTasks, pipe: Pipe, _: Auth) -> Accepted:
@@ -171,24 +275,22 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         q: Annotated[str, Query(min_length=1)],
         pipe: Pipe,
         _: Auth,
+        saved: Saved,
         tag: str | None = None,
-        start: Annotated[date | None, Query(alias="from", description="Saved on or after (UTC day)")] = None,
-        end: Annotated[date | None, Query(alias="to", description="Saved on or before (UTC day)")] = None,
         kind: Kind | None = None,
     ) -> SearchResults:
-        try:
-            saved = DateRange(start=start, end=end)
-        except ValidationError as exc:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors()[0]["msg"].removeprefix("Value error, ")
-            )
         return await search(pipe.storage, pipe.llm, q, tag, saved, kind)
 
-    @app.get("/items/untagged", response_model=list[Item])
-    def list_untagged(pipe: Pipe, _: Auth, kind: Kind | None = None) -> list[Item]:
-        return pipe.storage.list_untagged_items(kind=kind)
+    @app.get("/items", response_model=list[ItemView])
+    def list_items(pipe: Pipe, _: Auth, saved: Saved, tag: str | None = None, kind: Kind | None = None) -> list[Item]:
+        """Newest saved first; `tag` also matches its sub-tags."""
+        return pipe.storage.list_items(tag, saved, kind)
 
-    @app.get("/items/{item_id}", response_model=Item)
+    @app.get("/items/untagged", response_model=list[ItemView])
+    def list_untagged(pipe: Pipe, _: Auth, saved: Saved, kind: Kind | None = None) -> list[Item]:
+        return pipe.storage.list_untagged_items(saved, kind)
+
+    @app.get("/items/{item_id}", response_model=ItemView)
     def get_item(item_id: str, pipe: Pipe, _: Auth) -> Item:
         item = pipe.storage.get_item(item_id)
         if item is None:
@@ -206,7 +308,7 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no such item")
         return item
 
-    @app.post("/items/{item_id}/tags", response_model=Item)
+    @app.post("/items/{item_id}/tags", response_model=ItemView)
     def add_owner_tag(item_id: str, body: OwnerTag, pipe: Pipe, _: Auth) -> Item:
         """Tag the Item by hand; the tag survives new Captures and re-tags."""
         try:
@@ -214,7 +316,7 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
 
-    @app.delete("/items/{item_id}/tags/{path:path}", response_model=Item)
+    @app.delete("/items/{item_id}/tags/{path:path}", response_model=ItemView)
     def untag(item_id: str, path: str, pipe: Pipe, _: Auth) -> Item:
         """Take the tag off the Item; it stays rejected for this Item until allowed again."""
         try:
@@ -222,7 +324,7 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
 
-    @app.delete("/items/{item_id}/rejected-tags/{path:path}", response_model=Item)
+    @app.delete("/items/{item_id}/rejected-tags/{path:path}", response_model=ItemView)
     def allow_again(item_id: str, path: str, pipe: Pipe, _: Auth) -> Item:
         """Let the pipeline choose a rejected tag for this Item again."""
         try:
@@ -230,7 +332,7 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
 
-    @app.put("/items/{item_id}/notes", response_model=Item)
+    @app.put("/items/{item_id}/notes", response_model=ItemView)
     def put_note(item_id: str, body: Note, pipe: Pipe, _: Auth) -> Item:
         """Replace the Item's Note; an empty one clears it. A Thought has no Note."""
         try:
@@ -238,11 +340,11 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         except ValueError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
 
-    @app.get("/items/{item_id}/versions", response_model=list[Version])
+    @app.get("/items/{item_id}/versions", response_model=list[Version], response_model_exclude=NO_EMBEDDINGS)
     def list_versions(item_id: str, pipe: Pipe, _: Auth) -> list[Version]:
         return pipe.storage.list_versions(item_id)
 
-    @app.get("/versions/{version_id}", response_model=Version)
+    @app.get("/versions/{version_id}", response_model=Version, response_model_exclude=NO_EMBEDDING)
     def get_version(version_id: str, pipe: Pipe, _: Auth) -> Version:
         version = pipe.storage.get_version(version_id)
         if version is None:
@@ -262,6 +364,18 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
     @app.get("/taxonomy", response_model=Taxonomy)
     def get_taxonomy(pipe: Pipe, _: Auth) -> Taxonomy:
         return pipe.storage.get_taxonomy()
+
+    @app.get("/taxonomy/stats", response_model=TaxonomyStats)
+    def taxonomy_stats(pipe: Pipe, _: Auth) -> TaxonomyStats:
+        """Item counts for the Tag tree, which Tags can be deleted, and how many Items a re-tag would reach."""
+        tags = [t.path for t in pipe.storage.get_taxonomy().tags]
+        return TaxonomyStats(
+            items=len(pipe.storage.list_item_ids()),
+            untagged=len(pipe.storage.list_untagged_items()),
+            counts=pipe.storage.count_items(tags),
+            deletable=sorted(deletable_tags(pipe.storage)),
+            retag_candidates=len(retag_targets(pipe.storage)),
+        )
 
     @app.post("/taxonomy/tags", status_code=status.HTTP_201_CREATED, response_model=Tag)
     def create_tag(body: NewTag, pipe: Pipe, _: Auth) -> Tag:

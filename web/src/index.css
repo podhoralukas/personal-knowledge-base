@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* Dark follows the system setting. */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+@theme inline {
+  --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  /* Reading text in the Item pane */
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  /* The selected row, the active filter */
+  --color-selected: var(--selected);
+  --color-tag: var(--tag);
+  --color-tag-foreground: var(--tag-foreground);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* The agreed mockup's palette (D36). */
+:root {
+  --background: #f4f6f8;
+  --foreground: #151a21;
+  --card: #ffffff;
+  --card-foreground: #151a21;
+  --popover: #ffffff;
+  --popover-foreground: #151a21;
+  --primary: #0e6a76;
+  --primary-foreground: #ffffff;
+  --secondary: #eceff3;
+  --secondary-foreground: #151a21;
+  --muted: #eceff3;
+  --muted-foreground: #5b6472;
+  --accent: #eceff3;
+  --accent-foreground: #151a21;
+  --destructive: #b4231b;
+  --destructive-soft: #fbe9e7;
+  --border: #dde2e9;
+  --input: #dde2e9;
+  --ring: #0e6a76;
+  --selected: #e0eff1;
+  --tag: #e9eff2;
+  --tag-foreground: #22404a;
+  --radius: 0.625rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #101317;
+    --foreground: #e5e8ed;
+    --card: #161a20;
+    --card-foreground: #e5e8ed;
+    --popover: #161a20;
+    --popover-foreground: #e5e8ed;
+    --primary: #5cc4cd;
+    --primary-foreground: #071417;
+    --secondary: #0c0f12;
+    --secondary-foreground: #e5e8ed;
+    --muted: #0c0f12;
+    --muted-foreground: #959dab;
+    --accent: #0c0f12;
+    --accent-foreground: #e5e8ed;
+    --destructive: #ff8a7f;
+    --destructive-soft: #3a1c19;
+    --border: #262c35;
+    --input: #262c35;
+    --ring: #5cc4cd;
+    --selected: #15323a;
+    --tag: #1c282e;
+    --tag-foreground: #b8d6db;
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-[15px] text-foreground;
+  }
+}

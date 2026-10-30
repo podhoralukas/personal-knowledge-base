@@ -104,7 +104,7 @@ class TestSearch:
             "saved_at": "2026-10-01T09:00:00Z",
             "url": "https://example.com/0",
             "score": None,
-            "link": f"/ui/items/{hamilton.id}",
+            "link": f"/open/items/{hamilton.id}",
             "note": "why I kept it",
             "summary": "All about Hamilton apologises.",
             "key_points": ["one point"],
@@ -153,7 +153,7 @@ class TestWriteThought:
 
             item = storage.get_item(written["item_id"])
             assert (item.media_type, item.title, item.text) == (Kind.THOUGHT, "Soup", "Soup needs salt.")
-            assert written["link"] == f"/ui/items/{item.id}"
+            assert written["link"] == f"/open/items/{item.id}"
 
             await background.wait()
         version = storage.get_version(item.current_version_id)
@@ -248,4 +248,4 @@ class TestHttp:
         }
         r = client.post("/mcp", json=call, headers=self.HEADERS | {"Authorization": "Bearer secret"})
         written = r.json()["result"]["structuredContent"]
-        assert written["link"] == f"http://localhost:8000/ui/items/{written['item_id']}"
+        assert written["link"] == f"http://localhost:8000/open/items/{written['item_id']}"

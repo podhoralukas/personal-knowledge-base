@@ -73,6 +73,12 @@ UI_TOKEN_COOKIE = "kb_token"
 UI_TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 UI_PENDING_POLL = "2s"
 
+# React app: built by `npm run build` in web/ and served by the app. It sends the login cookie to the JSON
+# API; a cookie-authenticated request must also carry this header, which another site cannot add.
+WEB_PATH = "/app"
+WEB_DIST_DIR = PACKAGE_DIR.parent / "web" / "dist"
+CSRF_HEADER = "X-KB-CSRF"
+
 # MCP server for agents, mounted in the app; a search result carries only the start of a long Thought
 MCP_PATH = "/mcp"
 MCP_THOUGHT_TEXT_CHARS = 2_000

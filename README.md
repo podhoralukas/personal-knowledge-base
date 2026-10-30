@@ -9,10 +9,19 @@ The app uses manually added system of tags, which you should manually define bef
 
 Each capture uses single LLM API call to summarize the information for storing, and then another one to construct the vector for semantic search. Your custom OpenAI API key has to be added to the env variables once running locally. 
 
+
+Capturing an article with the browser extension, with two tags picked by hand:
+
+![The extension's popup over a news article: tag checkboxes, an optional note and the Capture button](docs/images/capture_extension.png)
+
+The web app: the saved items and the selected article's summary and key points:
+
+![The web app's Items page: tag tree with counts, the list of saved articles and the selected article's summary, tags and key points](docs/images/knowledge_base_frontend.png)
+
 Extent of use of AI to create this app - Claude Code was used to write the code. The domain design and architectural decisions were done by myself. 
 
 ### Possible next development steps:
-- enhancing UI of the taxonomy and search interface so that it is clearer,
+- improving the search relevance, so that only loosely related items don't rank first,
 - adding the possibility to modify the system prompt at the extension input,
 - hosting of OpenSearch db and the app container in cloud.
 
@@ -38,7 +47,7 @@ Each capture creates a new **Version** of an **Item** (one Item per normalised U
 - [Docker](https://docs.docker.com/get-docker/) with the Compose plugin (Docker Desktop on Windows), which runs OpenSearch and the app
 - Python **3.12** (exactly 3.12; 3.13 is not supported yet), for the tests and the setup script's tooling
 - An API key for an OpenAI-compatible LLM endpoint (OpenAI by default; see [Configuration](#configuration))
-- Node.js 22+, only if you want to build the browser extension
+- Node.js 24, to build the web app (and the browser extension)
 
 The default models (`gpt-4o-mini` and `text-embedding-3-small`) cost a fraction of a cent per captured page.
 
@@ -68,7 +77,7 @@ Open `.env` and set two values:
 ./setup.sh
 ```
 
-The script creates a `.venv` with Python 3.12 for the tests, builds and starts OpenSearch and the app with Docker Compose, waits until the app is up, and configures backups (see [Backups](#backups)). It is safe to run again. If you skipped step 2, it creates `.env` for you and stops so you can fill it in.
+The script creates a `.venv` with Python 3.12 for the tests, builds and starts OpenSearch and the app with Docker Compose, waits until the app is up, builds the web app, and configures backups (see [Backups](#backups)). It is safe to run again. If you skipped step 2, it creates `.env` for you and stops so you can fill it in.
 
 If `python3` on your machine is not 3.12, create the virtual environment yourself first; the script reuses an existing `.venv`:
 
@@ -77,7 +86,7 @@ python3.12 -m venv .venv
 ./setup.sh
 ```
 
-Open <http://localhost:8000> and sign in with your `API_TOKEN`. The OpenSearch indices are created when the app first starts.
+Open <http://localhost:8000/app> and sign in with your `API_TOKEN`. The OpenSearch indices are created when the app first starts. (The older web UI is still at <http://localhost:8000/ui> until the new one replaces it. <http://localhost:8000> and the links the extension and MCP tools give for an Item open the web app, or `/ui` while `web/dist` is not built.)
 
 **4. Keep it running**
 
@@ -88,6 +97,8 @@ To stop it: `docker compose stop` (it stays stopped until `docker compose start`
 ### Development
 
 The app container runs the source from this folder with `uvicorn --reload`, so a change in `kb/` is live within a second; a broken edit stops the app until it is fixed (`docker compose logs -f app`). After changing dependencies in `pyproject.toml`, rebuild with `docker compose up -d --build`. Tests run from the `.venv` (`.venv/bin/pytest`); the OpenSearch tests use `test_`-prefixed indices in the same cluster and delete them afterwards.
+
+The web app (React + TypeScript, replacing the older `/ui`, see [ADR-0004](docs/adr/0004-react-frontend-over-the-json-api.md)) lives in `web/`. The app serves its build from `web/dist` at <http://localhost:8000/app>; `npm run build` in `web/` makes a change live without a restart. The build first regenerates the API types (`src/api/schema.d.ts`) from the running app's `/openapi.json`, so a backend model change that breaks the frontend fails the build; `npm run api` does only that step. While working on the frontend, `npm run dev` serves it with hot reload at <http://localhost:5173/app/>, passing API calls to `:8000`. Tests (`npm test`) run offline with Vitest against a mocked API (MSW).
 
 ### Backups
 
@@ -106,18 +117,21 @@ curl -X POST "localhost:9201/_snapshot/kb-backups/<snapshot>/_restore" -H 'Conte
 ### First steps
 
 1. **Build your taxonomy.** Open **Taxonomy** and add a few tags, such as `ai`, `ai/agents`, `cooking`. Tags are lowercase paths; a child (`ai/agents`) is found by a filter on its parent (`ai`). A short description helps the LLM choose. **Until the taxonomy has tags, captures are summarised but not tagged.**
-2. **Capture a page.** On **Items**, paste a URL and press capture. The Item appears at once as *pending* and fills in a few seconds later.
-3. **Write a Thought.** Use the Thought form on **Items** for your own text without a URL. It is shown at once, then tagged and embedded in the background. Thoughts are never summarised.
-4. **Search.** **Search** combines keyword and semantic matching and can be filtered by tag, date and kind (article or thought).
+2. **Capture a page.** Press **+ Add**, paste a URL and press *Capture*. The new Item opens at once and fills in a few seconds later. For pages behind a login or consent wall, use the [browser extension](#browser-extension).
+3. **Write a Thought.** In **+ Add**, switch to *Write a Thought* for your own text without a URL. It is shown at once, then tagged and embedded in the background. Thoughts are never summarised.
+4. **Search.** Type into the search box above the list (`/` jumps there). It combines keyword and semantic matching and keeps the filters you set.
 
 ### Web UI
 
-| Page | What you do there |
+The web app at `/app` has two pages; on a wide window **Items** shows three panes.
+
+| Part | What you do there |
 |---|---|
-| **Items** | Capture a URL, write a Thought, browse everything, filter by tag, date range and kind; *untagged* lists Items no tag fitted. |
-| **Item** | Read the summary and key points, add or remove tags, write a Note (private, never sent to the LLM), browse and delete Versions, retry a failed capture, edit a Thought. |
-| **Search** | Hybrid search with the same filters. |
-| **Taxonomy** | Add, describe, rename, move and delete tags. **Re-tag** runs the LLM again over untagged Items and Items that could use a new, more specific tag (or over every Item, after confirmation). |
+| **Items: sidebar** | Filter by kind (article or Thought), saved date and tag; *Untagged* lists Items no tag fitted. |
+| **Items: list** | Browse newest first, or search (best match first). `j` / `k` move through the list. |
+| **Items: Item pane** | Read the summary and key points or the Thought's text; add or remove tags; write a Note (private, never sent to the LLM); browse and delete Versions. The **⋯** menu edits a Thought, captures an article again, copies a link or deletes the Item. |
+| **+ Add** | Capture a URL or write a Thought. |
+| **Taxonomy** | Add, describe, rename, move and delete tags. **Re-tag** runs the LLM again over untagged Items and Items that could use a new, more specific tag (or over every Item), after confirmation. |
 | **API** | Interactive OpenAPI docs (`/docs`). |
 
 When you remove a tag from an Item, the LLM is never offered that tag for that Item again. Re-tagging only adds tags. The full rules are in [docs/tagging.md](docs/tagging.md).
@@ -141,7 +155,7 @@ Load `extension/dist` unpacked:
 
 Open the extension's options, set the server URL (default `http://localhost:8000`) and your `API_TOKEN`, and save; it tests the connection.
 
-To capture, click the toolbar icon (or press `Alt+Shift+K`). Optionally tick tags (with none ticked, the server tags the page automatically) and write a Note (only for you, never sent to the LLM). Then press *Capture* or `Ctrl+Enter`. The Note is appended to the Item's Note, which you can edit later on the Item page.
+To capture, click the toolbar icon (or press `Alt+Shift+K`). Optionally tick tags (with none ticked, the server tags the page automatically) and write a Note (only for you, never sent to the LLM). Then press *Capture* or `Ctrl+Enter`. The Note is appended to the Item's Note, which you can edit later in the Item pane.
 
 ### MCP server (agents)
 
@@ -162,7 +176,7 @@ Then ask, for example, "what do I have on Hamilton from this week?" or "save thi
 
 ### HTTP API
 
-The full API is described in the OpenAPI (Swagger) spec at <http://localhost:8000/openapi.json>, browsable at <http://localhost:8000/docs>. Every endpoint needs `Authorization: Bearer $API_TOKEN`.
+The full API is described in the OpenAPI (Swagger) spec at <http://localhost:8000/openapi.json>, browsable at <http://localhost:8000/docs>. Every endpoint needs `Authorization: Bearer $API_TOKEN`. The web app instead logs in through `POST /auth/login`, which sets an HttpOnly cookie; the API accepts that cookie only on requests that also carry the `X-KB-CSRF` header, which another website cannot add.
 
 ## Configuration
 
@@ -177,7 +191,7 @@ All settings are read from `.env` (see [.env.example](.env.example)) or from env
 | `EMBEDDING_BASE_URL` | `https://api.openai.com/v1` | Embeddings may use a different endpoint than chat. |
 | `EMBEDDING_API_KEY` | `LLM_API_KEY` | |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Must return **1536-dimensional** vectors. Changing it makes existing vectors incomparable. |
-| `OPENSEARCH_URL` | `http://localhost:9200` | OpenSearch endpoint. `docker-compose.yml` sets it to the `kb-opensearch` container for the app. |
+| `OPENSEARCH_URL` | `http://localhost:9200` | OpenSearch endpoint. `docker-compose.yml` sets it to the `kb-opensearch` container for the app; from the host, that cluster is at `http://localhost:9201`. |
 | `OPENSEARCH_USERNAME` / `OPENSEARCH_PASSWORD` | none | For a secured OpenSearch cluster. |
 | `OPENSEARCH_INDEX_PREFIX` | empty | Prefix for index names, to keep several instances in one cluster apart. |
 | `KB_BACKUP_DIR` | `./backups` | Folder for OpenSearch snapshots, read by `docker-compose.yml`. |
