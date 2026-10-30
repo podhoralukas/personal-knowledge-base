@@ -109,13 +109,7 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() =>
-                  navigator.clipboard
-                    .writeText(`${window.location.origin}${window.location.pathname}?item=${encodeURIComponent(id)}`)
-                    .then(() => toast("Link copied."))
-                }
-              >
+              <DropdownMenuItem onSelect={() => copyLink(id)}>
                 Copy link
               </DropdownMenuItem>
               {thought ? (
@@ -236,6 +230,18 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
       </div>
     </article>
   );
+}
+
+/** `navigator.clipboard` is missing outside a secure context (plain HTTP on a LAN address), and writing to it
+ * can be refused. */
+async function copyLink(id: string) {
+  const link = `${window.location.origin}${window.location.pathname}?item=${encodeURIComponent(id)}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("Link copied.");
+  } catch {
+    toast.error("Couldn't copy the link.");
+  }
 }
 
 function Notice({ children }: { children: ReactNode }) {

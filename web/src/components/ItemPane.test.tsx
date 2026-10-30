@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { fakeApi, item, tag, version } from "@/test/fakeApi";
 import { renderApp } from "@/test/render";
 
@@ -87,6 +87,31 @@ test("deleting asks first, then removes the Item and opens the next", async () =
   await userEvent.click(within(confirm).getByRole("button", { name: "Delete item" }));
   expect(await pane().findByRole("heading", { name: "Older item", level: 1 })).toBeInTheDocument();
   expect(api.items.map((i) => i.id)).toEqual(["a2"]);
+});
+
+test("Copy link copies the Item's link", async () => {
+  fakeApi({ items: [ARTICLE], tags: TAGS });
+  await open();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+  try {
+    await userEvent.click(pane().getByRole("button", { name: "More actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
+    expect(await screen.findByText("Link copied.")).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/app/?item=a1`);
+  } finally {
+    delete (navigator as { clipboard?: Clipboard }).clipboard;
+  }
+});
+
+test("Copy link says so when there is no clipboard (plain HTTP, like jsdom)", async () => {
+  fakeApi({ items: [ARTICLE], tags: TAGS });
+  await open();
+
+  await userEvent.click(pane().getByRole("button", { name: "More actions" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
+  expect(await screen.findByText("Couldn't copy the link.")).toBeInTheDocument();
 });
 
 test("Versions: details, and deleting one but never the last", async () => {
