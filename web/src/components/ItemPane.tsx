@@ -56,7 +56,8 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
     </Button>
   );
 
-  if (item.isPending) return <Empty>Loading…</Empty>;
+  // A missing Item may be a Capture not processed yet, which only the Versions tell.
+  if (item.isPending || (item.isError && versions.isPending)) return <Empty>Loading…</Empty>;
   if (item.isError) {
     const gone = item.error instanceof ApiError && item.error.status === 404;
     return (

@@ -1,8 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http } from "msw";
 import { expect, test, vi } from "vitest";
 import { fakeApi, item, tag, version } from "@/test/fakeApi";
 import { renderApp } from "@/test/render";
+import { server } from "@/test/server";
 
 const TAGS = [tag("ai"), tag("ai/agents"), tag("cooking")];
 const ARTICLE = item({
@@ -112,6 +114,20 @@ test("Copy link says so when there is no clipboard (plain HTTP, like jsdom)", as
   await userEvent.click(pane().getByRole("button", { name: "More actions" }));
   await userEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
   expect(await screen.findByText("Couldn't copy the link.")).toBeInTheDocument();
+});
+
+test("a Capture not processed yet never says it no longer exists while its Versions load", async () => {
+  const id = "captured:https://example.com/new";
+  fakeApi({ tags: TAGS, versions: [version(item({ id, title: "" }), { status: "pending", enrichment: null })] });
+  let release = () => {};
+  const versionsHeld = new Promise<void>((resolve) => (release = resolve));
+  // Answered by the fake API once released: the Item's 404 comes first.
+  server.use(http.get("/items/:id/versions", () => versionsHeld));
+  renderApp(`/app/?item=${encodeURIComponent(id)}`);
+
+  await expect(screen.findByText("This item no longer exists.", {}, { timeout: 500 })).rejects.toThrow();
+  release();
+  expect(await pane().findByText("Being captured…")).toBeInTheDocument();
 });
 
 test("Versions: details, and deleting one but never the last", async () => {

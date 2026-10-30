@@ -21,11 +21,13 @@ export function Shell() {
   const [filters, change] = useFilters();
   const q = useDebounced(filters.q.trim(), SEARCH_DELAY_MS);
   const list = useItemList(filters, q);
-  const [drawer, setDrawer] = useState(false);
+  // A link to an Item (the extension's "Open in Knowledge Base", a copied link) opens it.
+  const [drawer, setDrawer] = useState(() => !!filters.item);
   const [sidebar, setSidebar] = useState(false);
   const [adding, setAdding] = useState(false);
-  // A new Capture joins the list only once it is enriched; until then it stays open anyway.
-  const [added, setAdded] = useState<string>();
+  // A new Capture joins the list only once it is enriched; until then it stays open anyway. So does the Item a
+  // link opened: it may be such a Capture too.
+  const [kept, setKept] = useState(filters.item);
   const searchRef = useRef<HTMLInputElement>(null);
   const items = list.data?.items;
 
@@ -37,7 +39,7 @@ export function Shell() {
     [change, wide],
   );
   const opened = (id: string) => {
-    setAdded(id);
+    setKept(id);
     select(id);
   };
 
@@ -47,12 +49,12 @@ export function Shell() {
       wide &&
       items?.length &&
       !list.isPlaceholderData &&
-      (!added || filters.item !== added) &&
+      (!kept || filters.item !== kept) &&
       !items.some((i) => i.id === filters.item)
     ) {
       change({ item: items[0].id });
     }
-  }, [wide, items, list.isPlaceholderData, filters.item, added, change]);
+  }, [wide, items, list.isPlaceholderData, filters.item, kept, change]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -77,6 +79,7 @@ export function Shell() {
   }, [items, filters.item, wide, drawer, change]);
 
   const deleted = () => {
+    setKept(undefined);
     change({ item: undefined });
     setDrawer(false);
   };

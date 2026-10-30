@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 import { rangeDates } from "@/lib/dates";
-import { fakeApi, item, lastListQuery, tag } from "@/test/fakeApi";
+import { fakeApi, item, lastListQuery, tag, version } from "@/test/fakeApi";
 import { renderApp } from "@/test/render";
 import { setViewport } from "@/test/viewport";
 
@@ -125,6 +125,32 @@ describe("the Item list", () => {
     await shown();
     expect(await pane().findByRole("heading", { name: "Verstappen wins in Singapore", level: 1 })).toBeInTheDocument();
     expect(titles()).toEqual(["Verstappen wins in Singapore"]);
+  });
+});
+
+describe("a link to an Item", () => {
+  const ID = "captured:https://example.com/new";
+  const BEING_CAPTURED = version(item({ id: ID, title: "" }), { status: "pending", enrichment: null });
+
+  test("still being captured stays open, not replaced by the first listed Item, until it is processed", async () => {
+    const api = fakeApi({ items: ITEMS, tags: TAGS, versions: [BEING_CAPTURED] });
+    renderApp(`/app/?item=${encodeURIComponent(ID)}`);
+    await shown();
+    expect(await pane().findByText("Being captured…")).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("item")).toBe(ID);
+
+    api.items.push(item({ id: ID, title: "The new article", first_captured_at: "2026-10-30T08:00:00.000Z" }));
+    api.versions[0].status = "enriched";
+    expect(await pane().findByRole("heading", { name: "The new article", level: 1 }, { timeout: 4000 })).toBeInTheDocument();
+    expect(await list().findByRole("heading", { name: "The new article", level: 3 })).toBeInTheDocument();
+  });
+
+  test("opens in the drawer on a narrower window", async () => {
+    setViewport(1000);
+    fakeApi({ items: ITEMS, tags: TAGS, versions: [BEING_CAPTURED] });
+    renderApp(`/app/?item=${encodeURIComponent(ID)}`);
+    const drawer = await screen.findByRole("dialog", { name: "Selected item" });
+    expect(await within(drawer).findByText("Being captured…")).toBeInTheDocument();
   });
 });
 
