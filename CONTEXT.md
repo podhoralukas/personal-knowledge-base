@@ -9,7 +9,7 @@ One entry of the knowledge base: a title and a text that the pipeline tags and m
 _Avoid_: article (too narrow), bookmark, document
 
 **Kind**:
-What sort of Item it is, i.e. where its text came from: `article` or `thought`. Fixed when the Item is created, shown with it and filterable like a Tag, but not a Tag: it says where the Item came from, not what it is about, and is never part of the Taxonomy.
+What sort of Item it is, i.e. where its text came from: `article`, `thought` or `session`. Fixed when the Item is created, shown with it and filterable like a Tag, but not a Tag: it says where the Item came from, not what it is about, and is never part of the Taxonomy.
 _Avoid_: type, category, source
 
 **Thought**:
@@ -55,3 +55,23 @@ _Avoid_: comment, description (that is a Tag's), thought (that is an Item of its
 **Owner**:
 The single person whose knowledge base this is. Each deployment has exactly one.
 _Avoid_: user, tenant, account
+
+**Session**:
+One run of an AI agent (Claude Code, Codex) that the Owner worked with, identified by the agent together with the agent's own session id; resuming it continues the same Session. As an Item (Kind `session`) its text is the Session Summary, and each new Session Summary of it adds a Version. It links to its Transcript and its Summary File.
+_Avoid_: conversation, chat, thread
+
+**Session Summary**:
+The text an agent writes about a Session when the Owner asks for it, at the end or part-way through, in the language the Session was held in. It is made searchable by meaning, but the pipeline neither summarises nor tags it: a Session's Tag is its Project. It cannot be edited in the knowledge base: a changed Session Summary is a new one, written by the agent again. One written later from the Transcript, by an agent that was not in the Session, is an **after-the-fact** Session Summary and is marked as such.
+_Avoid_: recap, notes, note (that is the free text on an Item)
+
+**Transcript**:
+The agent's own full record of a Session, kept where the agent keeps it: on the Owner's machine, or online for a cloud Session. Never copied into the knowledge base; the Session only links to it.
+_Avoid_: log, history, raw conversation
+
+**Summary File**:
+The file a Session Summary is written to before it reaches the knowledge base: its durable copy, readable without the knowledge base running. Each Version of a Session has its own Summary File, so the knowledge base's Sessions, history included, can be rebuilt from them.
+_Avoid_: export, backup (that is the snapshot of the indices)
+
+**Project**:
+A body of work the Owner groups Sessions by, such as a client or a product, taken from a fixed list the Owner keeps and recognised from the folder a Session ran in; it is never invented by an agent. Shown on a Session as a Tag under `project/`; the pipeline never assigns such a Tag to any Item, though the Owner may add one to an article or Thought by hand.
+_Avoid_: effort, workspace, repo (one Project can span several folders and repos)
