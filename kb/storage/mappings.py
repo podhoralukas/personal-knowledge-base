@@ -27,6 +27,59 @@ _ENRICHMENT = {
     }
 }
 
+# A Session Summary as its Version keeps it. Prose is not searched on the Version (the Item carries the text),
+# so it is stored unindexed, as the other Version text is.
+_PROSE = {"type": "text", "index": False}
+_SESSION = {
+    "properties": {
+        "meta": {
+            "properties": {
+                "agent": {"type": "keyword"},
+                "session_id": {"type": "keyword"},
+                "client": {"type": "keyword"},
+                "folder": {"type": "keyword"},
+                "branch": {"type": "keyword"},
+                "repo_url": {"type": "keyword"},
+                "transcript_path": {"type": "keyword"},
+                "started_at": {"type": "date"},
+                "ended_at": {"type": "date"},
+            }
+        },
+        "usage": {
+            "properties": {
+                "models": {
+                    "properties": {
+                        "model": {"type": "keyword"},
+                        "input_tokens": {"type": "long"},
+                        "output_tokens": {"type": "long"},
+                        "thinking_tokens": {"type": "long"},
+                        "cache_read_tokens": {"type": "long"},
+                        "cache_write_tokens": {"type": "long"},
+                    }
+                },
+                "owner_turns": {"type": "integer"},
+                "tool_calls": {"type": "integer"},
+                "cost_usd": {"type": "double"},
+            }
+        },
+        "after_the_fact": {"type": "boolean"},
+        "summary": {
+            "properties": {
+                "title": _PROSE,
+                "status": {"type": "keyword"},
+                "goal": _PROSE,
+                "outcome": _PROSE,
+                "decisions": {"properties": {"decision": _PROSE, "reason": _PROSE, "rejected": _PROSE}},
+                "problems": {"properties": {"symptom": _PROSE, "cause": _PROSE, "fix": _PROSE}},
+                "dropped": _PROSE,
+                "todo": _PROSE,
+                "sources": _PROSE,
+                "keywords": _PROSE,
+            }
+        },
+    }
+}
+
 VERSIONS = {
     "settings": _KNN_SETTINGS,
     "mappings": {
@@ -47,6 +100,7 @@ VERSIONS = {
             "error": {"type": "text", "index": False},
             "owner_tags": {"type": "keyword"},
             "note": {"type": "text", "index": False},
+            "session": _SESSION,
         },
     },
 }

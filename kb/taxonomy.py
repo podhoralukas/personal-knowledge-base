@@ -5,7 +5,7 @@ import re
 from datetime import UTC, datetime
 
 from kb.config import TAG_PATH_PATTERN
-from kb.models import Item, Tag, Taxonomy
+from kb.models import Item, Kind, Tag, Taxonomy
 from kb.storage import Storage, TagExists
 
 
@@ -87,9 +87,12 @@ def retag_targets(storage: Storage, every_item: bool = False) -> list[str]:
 
 
 def retag_candidates(items: list[Item], taxonomy: Taxonomy) -> list[str]:
-    """Untagged Items, and Items tagged with an ancestor of a Tag added since they were tagged."""
+    """Untagged Items, and Items tagged with an ancestor of a Tag added since they were tagged. Sessions are
+    never tagged by the pipeline, so they are never candidates."""
     ids = []
     for item in items:
+        if item.media_type is Kind.SESSION:
+            continue
         added = [t.path for t in taxonomy.tags if t.created_in_taxonomy_version > item.taxonomy_version]
         if added and (not item.tags or any(a.startswith(f"{t}/") for t in item.tags for a in added)):
             ids.append(item.id)

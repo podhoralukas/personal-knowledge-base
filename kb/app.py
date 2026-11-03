@@ -56,7 +56,7 @@ from kb.storage import TagExists
 from kb.storage.opensearch import OpenSearchStorage
 from kb.taxonomy import TagNotFound, add_tag, deletable_tags, delete_tag, describe_tag, rename_tag, retag_targets
 from kb.ui import ui_router
-from kb.versions import LastVersion, delete_version
+from kb.versions import LastVersion, SessionReadOnly, delete_version
 
 log = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
@@ -353,10 +353,10 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
 
     @app.delete("/versions/{version_id}", status_code=status.HTTP_204_NO_CONTENT)
     def remove_version(version_id: str, pipe: Pipe, _: Auth) -> None:
-        """The Item then shows its newest remaining Version; its last one cannot be deleted."""
+        """The Item then shows its newest remaining Version; its last one cannot be deleted, nor a Session Summary."""
         try:
             deleted = delete_version(pipe.storage, version_id)
-        except LastVersion as exc:
+        except (LastVersion, SessionReadOnly) as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
         if not deleted:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no such version")

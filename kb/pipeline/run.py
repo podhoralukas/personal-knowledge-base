@@ -11,13 +11,14 @@ from kb.models import (
     Enrichment,
     Item,
     Kind,
+    SessionRecord,
     Taxonomy,
     ThoughtEdit,
     ThoughtRequest,
     Version,
     VersionStatus,
 )
-from kb.normalize import normalise_url, thought_id, version_id
+from kb.normalize import normalise_url, session_item_id, thought_id, version_id
 from kb.pipeline.fetch import fetch, html_to_markdown
 from kb.pipeline.summarise import PROMPT_VERSION, summarise
 from kb.pipeline.tag import PROMPT_VERSION as TAG_PROMPT_VERSION
@@ -59,11 +60,30 @@ class Pipeline:
         self._show(version, Annotations().adding(version.owner_tags), at)
         return version
 
+    def session(self, record: SessionRecord, at: datetime, tags: list[str] | None = None) -> Version:
+        """Store a Session Summary as a new Version of its Session's Item, shown at once; the embedding follows.
+        The same Session at the same instant returns the stored Version. `tags` (the Session's Project) become
+        owner tags, as picked tags do for a Capture."""
+        tags = tags or []
+        self._known(tags)
+        iid = session_item_id(record.meta.agent, record.meta.session_id)
+        existing = self.storage.get_version(version_id(iid, at))
+        if existing is not None:
+            return existing
+        previous = self.storage.get_item(iid)
+        version = Version.session_summary(iid, at, record, tags)
+        annotations = (previous.annotations if previous else Annotations()).adding(version.owner_tags)
+        # min: Summary Files may be imported in any order, and the saved date is the earliest Summary's
+        self._show(version, annotations, min(previous.first_captured_at, at) if previous else at)
+        return version
+
     def edit(self, item_id: str, thought: ThoughtEdit) -> Version | None:
         """A new Version of the Thought, shown at once; None for an unknown Item."""
         item = self.storage.get_item(item_id)
         if item is None:
             return None
+        if item.media_type is Kind.SESSION:
+            raise ValueError("a Session Summary cannot be edited; ask the agent for a new one")
         if item.media_type is not Kind.THOUGHT:
             raise ValueError("only a Thought can be edited")
         self._known(thought.tags)
@@ -105,8 +125,8 @@ class Pipeline:
     async def retag(self, item_id: str) -> Version | None:
         """Tag the Item's current Version against the current Taxonomy and store that as a new Version."""
         item = self.storage.get_item(item_id)
-        if item is None:
-            return None
+        if item is None or item.media_type is Kind.SESSION:
+            return None  # a Session's only Tag is its Project, set by the Owner; the pipeline never tags it
         current = self.storage.get_version(item.current_version_id)
         if current.status is not VersionStatus.ENRICHED:
             return None  # a Thought's edit still pending or failed
@@ -141,7 +161,7 @@ class Pipeline:
 
     def _store(self, version: Version) -> None:
         previous = self.storage.get_item(version.item_id)
-        if version.kind is Kind.THOUGHT:
+        if version.kind is not Kind.ARTICLE:
             if previous is not None:
                 self._show(version, previous.annotations, previous.first_captured_at)
             return
@@ -158,6 +178,8 @@ class Pipeline:
         taxonomy = self.storage.get_taxonomy()
         previous = self._same_input(version)
         summarised = await self._summarised(version) if previous is None else self._reused(previous)
+        if version.kind is Kind.SESSION:
+            return summarised  # embedded only: a Session Summary is never summarised or tagged by the pipeline
         if version.owner_tags:
             return self._tagged_by_owner(summarised, taxonomy)
 
@@ -189,8 +211,9 @@ class Pipeline:
         return e.model_copy(update={"reused_from": e.reused_from or version.id})
 
     async def _summarised(self, version: Version) -> Enrichment:
-        """Summary and embedding only, a Thought's embedding only; tags are filled in by `_tagged`."""
-        if version.kind is Kind.THOUGHT:
+        """Summary and embedding only; a Thought's or a Session's is its embedding only. Tags are filled in by
+        `_tagged`."""
+        if version.kind is not Kind.ARTICLE:
             embedding = await self.llm.embed("\n".join(version.pipeline_input()))
             return Enrichment(embedding=embedding, taxonomy_version=0, embedding_model=self.llm.embedding_model)
         if version.content is None:

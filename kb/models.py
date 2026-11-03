@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, computed_field, field_validator, model_va
 
 from kb.config import (
     NOTE_MAX_CHARS,
+    SESSION_PIPELINE_MAX_CHARS,
+    SESSION_TITLE_MAX_CHARS,
     THOUGHT_DERIVED_TITLE_CHARS,
     THOUGHT_MAX_CHARS,
     THOUGHT_PIPELINE_MAX_CHARS,
@@ -23,11 +25,13 @@ class Channel(StrEnum):
     RETAG = "retag"
     WRITTEN = "written"
     MCP = "mcp"  # a Thought written by an agent for the Owner
+    SESSION = "session"  # a Session Summary imported from its Summary File
 
 
 class Kind(StrEnum):
     ARTICLE = "article"
     THOUGHT = "thought"
+    SESSION = "session"
 
 
 class VersionStatus(StrEnum):
@@ -55,6 +59,8 @@ class CaptureRequest(BaseModel):
             raise ValueError("retag Versions are created by the re-tag action, not captured")
         if channel in (Channel.WRITTEN, Channel.MCP):
             raise ValueError("Thoughts are written, not captured")
+        if channel is Channel.SESSION:
+            raise ValueError("Session Summaries are imported, not captured")
         return channel
 
 
@@ -82,6 +88,118 @@ class ThoughtRequest(ThoughtEdit):
     """Body of POST /thoughts. Sending the same `written_at` again returns the Thought already written."""
 
     written_at: datetime | None = None
+
+
+class Agent(StrEnum):
+    CLAUDE_CODE = "claude-code"
+    CODEX = "codex"
+
+
+class SessionStatus(StrEnum):
+    DONE = "done"
+    PARTIAL = "partial"
+    BLOCKED = "blocked"
+    ABANDONED = "abandoned"
+
+
+class Decision(BaseModel):
+    decision: str
+    reason: str = ""
+    rejected: str = ""  # the alternative that was not taken
+
+    def line(self) -> str:
+        parts = [
+            self.decision,
+            f"Reason: {self.reason}" if self.reason else "",
+            f"Rejected: {self.rejected}" if self.rejected else "",
+        ]
+        return "- " + " ".join(p for p in parts if p)
+
+
+class Problem(BaseModel):
+    symptom: str
+    cause: str = ""
+    fix: str = ""
+
+    def line(self) -> str:
+        parts = [self.symptom, f"Cause: {self.cause}" if self.cause else "", f"Fix: {self.fix}" if self.fix else ""]
+        return "- " + " ".join(p for p in parts if p)
+
+
+class SessionSummary(BaseModel):
+    """What the agent writes about a Session (D43). Empty sections are left out, so a small Session stays short."""
+
+    title: str = Field(min_length=1, max_length=SESSION_TITLE_MAX_CHARS)
+    status: SessionStatus
+    goal: str = ""
+    outcome: str = ""
+    decisions: list[Decision] = Field(default_factory=list)
+    problems: list[Problem] = Field(default_factory=list)
+    dropped: list[str] = Field(default_factory=list)
+    todo: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+
+    def text(self) -> str:
+        """The sections as the Item's text, each present one under its heading; this is what search and
+        the embedding read."""
+        blocks = [
+            f"Goal: {self.goal}" if self.goal else "",
+            f"Outcome: {self.outcome}" if self.outcome else "",
+            _section("Decisions", [d.line() for d in self.decisions]),
+            _section("Problems", [p.line() for p in self.problems]),
+            _section("Dropped", [f"- {d}" for d in self.dropped]),
+            _section("Todo", [f"- {t}" for t in self.todo]),
+            _section("Sources", [f"- {s}" for s in self.sources]),
+            f"Keywords: {', '.join(self.keywords)}" if self.keywords else "",
+        ]
+        return "\n\n".join(b for b in blocks if b)
+
+
+def _section(heading: str, lines: list[str]) -> str:
+    return f"{heading}:\n" + "\n".join(lines) if lines else ""
+
+
+class SessionMeta(BaseModel):
+    """What code reads from the Transcript (D43); the agent never writes these."""
+
+    agent: Agent
+    session_id: str = Field(min_length=1)
+    client: str = ""  # the agent's own name for where it ran, e.g. Claude Code's entrypoint
+    folder: str = ""
+    branch: str = ""
+    repo_url: str = ""
+    transcript_path: str = ""
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+
+
+class ModelUsage(BaseModel):
+    """Tokens one model used in a Session."""
+
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    thinking_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+
+
+class SessionUsage(BaseModel):
+    models: list[ModelUsage] = Field(default_factory=list)
+    owner_turns: int = 0
+    tool_calls: int = 0
+    cost_usd: float | None = None  # only where the agent reports it; no price table of our own
+
+
+class SessionRecord(BaseModel):
+    """A Session Summary as its Version keeps it, read-only (D42, D43)."""
+
+    meta: SessionMeta
+    usage: SessionUsage = Field(default_factory=SessionUsage)
+    summary: SessionSummary
+    # Written later from the Transcript, by an agent that was not in the Session.
+    after_the_fact: bool = False
 
 
 class Enrichment(BaseModel):
@@ -127,6 +245,14 @@ class Version(BaseModel):
     owner_tags: list[str] = Field(default_factory=list)
     # The Note written with this Capture; it goes below the Item's Note.
     note: str = ""
+    # A session Version's Session Summary and what its Transcript says; no other kind has one.
+    session: SessionRecord | None = None
+
+    @model_validator(mode="after")
+    def _session_record(self) -> "Version":
+        if (self.kind is Kind.SESSION) != (self.session is not None):
+            raise ValueError("a session Version has a session record, and only a session Version has one")
+        return self
 
     @classmethod
     def create(cls, request: CaptureRequest, captured_at: datetime, content: str) -> "Version":
@@ -157,8 +283,24 @@ class Version(BaseModel):
             owner_tags=sorted(set(thought.tags)),
         )
 
+    @classmethod
+    def session_summary(cls, item_id: str, at: datetime, record: SessionRecord, owner_tags: list[str]) -> "Version":
+        return cls(
+            id=version_id(item_id, at),
+            item_id=item_id,
+            captured_at=at,
+            channel=Channel.SESSION,
+            kind=Kind.SESSION,
+            content_hash=content_hash(record.summary.text()),
+            owner_tags=sorted(set(owner_tags)),
+            session=record,
+        )
+
     def pipeline_input(self, enrichment: Enrichment | None = None) -> tuple[str, str]:
-        """The title and text the pipeline reads: a Thought's own, an article's summary and key points."""
+        """The title and text the pipeline reads: a Thought's own, an article's summary and key points, a
+        Session Summary's own."""
+        if self.kind is Kind.SESSION:
+            return self.session.summary.title, self.session.summary.text()[:SESSION_PIPELINE_MAX_CHARS]
         if self.kind is Kind.THOUGHT:
             return thought_title(self.title, self.text), self.text[:THOUGHT_PIPELINE_MAX_CHARS]
         e = enrichment
@@ -259,8 +401,8 @@ class Item(ItemView):
     def rebuilt(cls, versions: list[Version], annotations: Annotations, first_captured_at: datetime) -> "Item | None":
         """The view of an Item's Versions (newest first), or None when they have nothing to show yet."""
         enriched = next((v for v in versions if v.status is VersionStatus.ENRICHED), None)
-        if versions and versions[0].kind is Kind.THOUGHT:
-            return cls._thought(versions[0], enriched, annotations, first_captured_at)
+        if versions and versions[0].kind is not Kind.ARTICLE:
+            return cls._shown(versions[0], enriched, annotations, first_captured_at)
         return cls._article(enriched, annotations, first_captured_at) if enriched else None
 
     @classmethod
@@ -283,18 +425,24 @@ class Item(ItemView):
         )
 
     @classmethod
-    def _thought(
+    def _shown(
         cls, current: Version, enriched: Version | None, annotations: Annotations, first_captured_at: datetime
     ) -> "Item":
+        """A Thought or a Session, shown as its newest Version reads whatever that Version's status; tags and
+        embedding come from the newest enriched Version."""
         e = enriched.enrichment if enriched else None
+        if current.kind is Kind.SESSION:
+            title, text = current.session.summary.title, current.session.summary.text()
+        else:
+            title, text = thought_title(current.title, current.text), current.text
         return cls(
             id=current.item_id,
-            media_type=Kind.THOUGHT,
+            media_type=current.kind,
             first_captured_at=first_captured_at,
             captured_at=current.captured_at,
             current_version_id=current.id,
-            title=thought_title(current.title, current.text),
-            text=current.text,
+            title=title,
+            text=text,
             tags=annotations.tags(e.tags if e else []),
             taxonomy_version=e.taxonomy_version if e else 0,
             embedding=e.embedding if e else None,

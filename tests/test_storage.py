@@ -7,18 +7,26 @@ import pytest
 from opensearchpy import OpenSearch
 
 from kb.models import (
+    Agent,
     Annotations,
     CaptureRequest,
     Channel,
     DateRange,
+    Decision,
     Enrichment,
     Item,
     Kind,
+    ModelUsage,
+    SessionMeta,
+    SessionRecord,
+    SessionStatus,
+    SessionSummary,
+    SessionUsage,
     Tag,
     ThoughtEdit,
     Version,
 )
-from kb.normalize import thought_id
+from kb.normalize import session_item_id, thought_id
 from kb.storage import TagExists, mappings
 from kb.storage.memory import MemoryStorage
 from kb.storage.opensearch import OpenSearchStorage
@@ -468,3 +476,48 @@ def test_kind_filters_lists_and_search(storage):
 def test_a_thoughts_text_is_keyword_searchable(storage):
     storage.put_item(Item.rebuilt([thought(T1, text="Lentils need no soaking.")], Annotations(), T1))
     assert [i.title for i in storage.search("lentils", None)] == ["Soup"]
+
+
+def session_version(at=T1) -> Version:
+    record = SessionRecord(
+        meta=SessionMeta(
+            agent=Agent.CODEX,
+            session_id="rollout-1",
+            folder="/work/kb",
+            branch="main",
+            repo_url="https://example.com/kb.git",
+            transcript_path="/home/x/.codex/rollout-1.jsonl",
+            started_at=T1,
+            ended_at=T2,
+        ),
+        usage=SessionUsage(
+            models=[ModelUsage(model="gpt-x", input_tokens=100, output_tokens=20, cache_read_tokens=5)],
+            owner_turns=4,
+            tool_calls=9,
+        ),
+        summary=SessionSummary(
+            title="Search tuning",
+            status=SessionStatus.PARTIAL,
+            decisions=[Decision(decision="Use min-max", reason="Scores are relative", rejected="Raw scores")],
+            keywords=["min_max"],
+        ),
+    )
+    return Version.session_summary(session_item_id(Agent.CODEX, "rollout-1"), at, record, ["project/kb"])
+
+
+def test_session_version_round_trip(storage):
+    v = session_version()
+    storage.put_version(v)
+    stored = storage.get_version(v.id)
+    assert stored == v
+    assert (stored.kind, stored.owner_tags, stored.session.meta.agent) == (Kind.SESSION, ["project/kb"], Agent.CODEX)
+
+
+def test_session_item_round_trip_kind_filter_and_search(storage):
+    v = session_version()
+    item = Item.rebuilt([v], Annotations(), T1)
+    storage.put_version(v)
+    storage.put_item(item)
+    assert storage.get_item(item.id) == item
+    assert [i.title for i in storage.list_items(kind=Kind.SESSION)] == ["Search tuning"]
+    assert [i.title for i in storage.search("relative", None)] == ["Search tuning"]

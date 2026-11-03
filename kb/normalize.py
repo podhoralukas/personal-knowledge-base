@@ -4,7 +4,14 @@ import hashlib
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from kb.config import CAPTURED_AT_FORMAT, DEFAULT_PORTS, THOUGHT_ID_PREFIX, TRACKING_PARAMS, TRACKING_PREFIXES
+from kb.config import (
+    CAPTURED_AT_FORMAT,
+    DEFAULT_PORTS,
+    SESSION_ID_PREFIX,
+    THOUGHT_ID_PREFIX,
+    TRACKING_PARAMS,
+    TRACKING_PREFIXES,
+)
 
 
 def _is_tracking(name: str) -> bool:
@@ -44,6 +51,11 @@ def format_captured_at(captured_at: datetime) -> str:
 def thought_id(written_at: datetime) -> str:
     """A Thought has no URL; it is identified by the instant it was first written."""
     return item_id(THOUGHT_ID_PREFIX + format_captured_at(written_at))
+
+
+def session_item_id(agent: str, session_id: str) -> str:
+    """A Session is identified by its agent and that agent's own session id; resuming keeps the id."""
+    return item_id(f"{SESSION_ID_PREFIX}{agent}:{session_id}")
 
 
 def version_id(item_id: str, captured_at: datetime) -> str:

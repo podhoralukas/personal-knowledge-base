@@ -54,6 +54,12 @@ THOUGHT_TITLE_MAX_CHARS = 200
 THOUGHT_DERIVED_TITLE_CHARS = 80
 THOUGHT_PIPELINE_MAX_CHARS = 8_000
 
+# Session Summaries: the id of a Session's Item is derived from its agent and the agent's session id; the
+# pipeline embeds the start of the summary's text.
+SESSION_ID_PREFIX = "session:"
+SESSION_TITLE_MAX_CHARS = 200
+SESSION_PIPELINE_MAX_CHARS = 8_000
+
 # Listings that return whole Items
 LIST_MAX_ITEMS = 1000
 

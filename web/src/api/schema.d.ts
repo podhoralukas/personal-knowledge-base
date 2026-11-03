@@ -320,7 +320,7 @@ export interface paths {
         post?: never;
         /**
          * Remove Version
-         * @description The Item then shows its newest remaining Version; its last one cannot be deleted.
+         * @description The Item then shows its newest remaining Version; its last one cannot be deleted, nor a Session Summary.
          */
         delete: operations["remove_version_versions__version_id__delete"];
         options?: never;
@@ -439,6 +439,11 @@ export interface components {
             version_id: string;
         };
         /**
+         * Agent
+         * @enum {string}
+         */
+        Agent: "claude-code" | "codex";
+        /**
          * Annotations
          * @description The Owner's corrections; they survive every new Capture and re-tag.
          */
@@ -479,7 +484,22 @@ export interface components {
          * Channel
          * @enum {string}
          */
-        Channel: "extension" | "rss" | "manual" | "retag" | "written" | "mcp";
+        Channel: "extension" | "rss" | "manual" | "retag" | "written" | "mcp" | "session";
+        /** Decision */
+        Decision: {
+            /** Decision */
+            decision: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Rejected
+             * @default
+             */
+            rejected: string;
+        };
         /**
          * Enrichment
          * @description Everything the pipeline derives from a Version's content, plus how it was produced.
@@ -574,7 +594,7 @@ export interface components {
          * Kind
          * @enum {string}
          */
-        Kind: "article" | "thought";
+        Kind: "article" | "thought" | "session";
         /** Login */
         Login: {
             /** Token */
@@ -627,6 +647,39 @@ export interface components {
             /** Score */
             score: number;
         };
+        /**
+         * ModelUsage
+         * @description Tokens one model used in a Session.
+         */
+        ModelUsage: {
+            /** Model */
+            model: string;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Thinking Tokens
+             * @default 0
+             */
+            thinking_tokens: number;
+            /**
+             * Cache Read Tokens
+             * @default 0
+             */
+            cache_read_tokens: number;
+            /**
+             * Cache Write Tokens
+             * @default 0
+             */
+            cache_write_tokens: number;
+        };
         /** NewTag */
         NewTag: {
             /** Path */
@@ -647,6 +700,21 @@ export interface components {
             /** Path */
             path: string;
         };
+        /** Problem */
+        Problem: {
+            /** Symptom */
+            symptom: string;
+            /**
+             * Cause
+             * @default
+             */
+            cause: string;
+            /**
+             * Fix
+             * @default
+             */
+            fix: string;
+        };
         /** RetagAccepted */
         RetagAccepted: {
             /** Taxonomy Version */
@@ -660,6 +728,111 @@ export interface components {
             items: components["schemas"]["Match"][];
             /** Semantic */
             semantic: boolean;
+        };
+        /**
+         * SessionMeta
+         * @description What code reads from the Transcript (D43); the agent never writes these.
+         */
+        SessionMeta: {
+            agent: components["schemas"]["Agent"];
+            /** Session Id */
+            session_id: string;
+            /**
+             * Client
+             * @default
+             */
+            client: string;
+            /**
+             * Folder
+             * @default
+             */
+            folder: string;
+            /**
+             * Branch
+             * @default
+             */
+            branch: string;
+            /**
+             * Repo Url
+             * @default
+             */
+            repo_url: string;
+            /**
+             * Transcript Path
+             * @default
+             */
+            transcript_path: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+        };
+        /**
+         * SessionRecord
+         * @description A Session Summary as its Version keeps it, read-only (D42, D43).
+         */
+        SessionRecord: {
+            meta: components["schemas"]["SessionMeta"];
+            usage?: components["schemas"]["SessionUsage"];
+            summary: components["schemas"]["SessionSummary"];
+            /**
+             * After The Fact
+             * @default false
+             */
+            after_the_fact: boolean;
+        };
+        /**
+         * SessionStatus
+         * @enum {string}
+         */
+        SessionStatus: "done" | "partial" | "blocked" | "abandoned";
+        /**
+         * SessionSummary
+         * @description What the agent writes about a Session (D43). Empty sections are left out, so a small Session stays short.
+         */
+        SessionSummary: {
+            /** Title */
+            title: string;
+            status: components["schemas"]["SessionStatus"];
+            /**
+             * Goal
+             * @default
+             */
+            goal: string;
+            /**
+             * Outcome
+             * @default
+             */
+            outcome: string;
+            /** Decisions */
+            decisions?: components["schemas"]["Decision"][];
+            /** Problems */
+            problems?: components["schemas"]["Problem"][];
+            /** Dropped */
+            dropped?: string[];
+            /** Todo */
+            todo?: string[];
+            /** Sources */
+            sources?: string[];
+            /** Keywords */
+            keywords?: string[];
+        };
+        /** SessionUsage */
+        SessionUsage: {
+            /** Models */
+            models?: components["schemas"]["ModelUsage"][];
+            /**
+             * Owner Turns
+             * @default 0
+             */
+            owner_turns: number;
+            /**
+             * Tool Calls
+             * @default 0
+             */
+            tool_calls: number;
+            /** Cost Usd */
+            cost_usd?: number | null;
         };
         /**
          * Tag
@@ -813,6 +986,7 @@ export interface components {
              * @default
              */
             note: string;
+            session?: components["schemas"]["SessionRecord"] | null;
         };
         /**
          * VersionStatus

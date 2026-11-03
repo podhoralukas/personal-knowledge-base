@@ -35,7 +35,7 @@ from kb.taxonomy import (
     rename_tag,
     retag_targets,
 )
-from kb.versions import LastVersion, delete_version
+from kb.versions import LastVersion, SessionReadOnly, delete_version
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 templates.env.filters["when"] = lambda dt: dt.strftime("%Y-%m-%d %H:%M UTC")
@@ -393,7 +393,7 @@ def ui_router(settings: Settings) -> APIRouter:
             return not_found(request, "version")
         try:
             delete_version(pipe.storage, version_id)
-        except LastVersion as exc:
+        except (LastVersion, SessionReadOnly) as exc:
             return item_page(request, pipe, v.item_id, status.HTTP_409_CONFLICT, error=str(exc).capitalize() + ".")
         return RedirectResponse(f"/ui/items/{v.item_id}", status.HTTP_303_SEE_OTHER)
 
