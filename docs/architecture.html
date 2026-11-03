@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge Base Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column for prose, wide figure bands for the diagrams; color = which component does the work */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --fg: #18202c;
+  --muted: #586274;
+  --line: #7d8798;
+  --rule: #dbe0e8;
+  --client: #6a4cc0; --client-tint: #f0ecfb;
+  --app: #2756c5;    --app-tint: #e8eefb;
+  --llm: #9a5b06;    --llm-tint: #fbf1e1;
+  --db: #1b7656;     --db-tint: #e2f3eb;
+  --web: #5d6573;    --web-tint: #eef0f3;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --surface: #151c26; --fg: #e5e9ef; --muted: #9ba5b5; --line: #737e90; --rule: #273141;
+    --client: #b8a2ff; --client-tint: #231c3b;
+    --app: #86a8ff;    --app-tint: #18233d;
+    --llm: #eeb45e;    --llm-tint: #2c2213;
+    --db: #5fcca0;     --db-tint: #12281e;
+    --web: #a7afbd;    --web-tint: #1d242f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --surface: #151c26; --fg: #e5e9ef; --muted: #9ba5b5; --line: #737e90; --rule: #273141;
+  --client: #b8a2ff; --client-tint: #231c3b;
+  --app: #86a8ff;    --app-tint: #18233d;
+  --llm: #eeb45e;    --llm-tint: #2c2213;
+  --db: #5fcca0;     --db-tint: #12281e;
+  --web: #a7afbd;    --web-tint: #1d242f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 16px/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 48px 80px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 72px; }
+.prose { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(2rem, 4.5vw, 3.1rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.45rem, 2.6vw, 1.9rem); font-weight: 700; letter-spacing: -0.01em; }
+h3 { font-size: 1.1rem; font-weight: 500; }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+code { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 0.05em 0.35em; }
+a { color: var(--app); }
+a:focus-visible { outline: 2px solid var(--app); outline-offset: 2px; border-radius: 2px; }
+
+.eyebrow { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+header.hero { display: grid; gap: 20px; }
+header.hero .lead { font-size: 1.13rem; color: var(--muted); max-width: 64ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 0.9rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--z); background: var(--zt); display: inline-block; }
+
+nav.toc { display: flex; flex-wrap: wrap; gap: 8px; }
+nav.toc a {
+  font-size: 0.88rem; text-decoration: none; color: var(--fg);
+  border: 1px solid var(--rule); background: var(--surface); border-radius: 999px; padding: 4px 12px;
+}
+nav.toc a:hover { border-color: var(--app); color: var(--app); }
+
+section { display: grid; gap: 22px; scroll-margin-top: 24px; }
+section > header { display: grid; gap: 8px; }
+section > header p { color: var(--muted); max-width: 68ch; }
+
+figure { margin: 0; display: grid; gap: 12px; }
+.fig-scroll {
+  overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 12px;
+  padding: 18px;
+}
+.fig-scroll svg { display: block; width: 100%; height: auto; min-width: 760px; }
+figcaption { font-size: 0.92rem; color: var(--muted); max-width: 80ch; }
+
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 32px; }
+.notes > div { min-width: 0; display: grid; gap: 4px; align-content: start; }
+.notes h3 { font-family: var(--font-body); font-weight: 600; font-size: 0.98rem; }
+.notes p { color: var(--muted); font-size: 0.95rem; }
+
+.table-scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 0.94rem; }
+th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+thead th { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tbody th { font-weight: 600; white-space: nowrap; }
+
+pre.cmd {
+  margin: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 14px 16px; font: 0.86rem/1.5 var(--font-mono);
+}
+
+ol.adrs { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--rule); }
+ol.adrs li { display: grid; grid-template-columns: 6.5rem 1fr; gap: 4px 20px; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+ol.adrs li > * { min-width: 0; }
+ol.adrs .num { font-family: var(--font-mono); color: var(--muted); font-size: 0.85rem; padding-top: 3px; }
+ol.adrs strong { display: block; }
+ol.adrs p { color: var(--muted); font-size: 0.95rem; }
+@media (max-width: 560px) { ol.adrs li { grid-template-columns: 1fr; } }
+
+/* ---------- SVG diagram styling ---------- */
+.z-client { --z: var(--client); --zt: var(--client-tint); }
+.z-app    { --z: var(--app);    --zt: var(--app-tint); }
+.z-llm    { --z: var(--llm);    --zt: var(--llm-tint); }
+.z-db     { --z: var(--db);     --zt: var(--db-tint); }
+.z-web    { --z: var(--web);    --zt: var(--web-tint); }
+
+svg text { font-family: var(--font-body); fill: var(--fg); }
+svg .box { fill: var(--zt); stroke: var(--z); stroke-width: 1.5; }
+svg .plain { fill: var(--surface); stroke: var(--z); stroke-width: 1.5; }
+svg .pill { fill: var(--surface); stroke: var(--z); stroke-width: 1; }
+svg .zone { fill: none; stroke: var(--z); stroke-width: 1.5; stroke-dasharray: 6 5; }
+svg .lane { fill: var(--bg); stroke: var(--rule); stroke-width: 1; }
+svg .lane-head { fill: var(--zt); stroke: none; }
+svg .t { font-size: 14px; font-weight: 600; }
+svg .s { font-size: 12px; fill: var(--muted); }
+svg .m { font-family: var(--font-mono); font-size: 11.5px; fill: var(--fg); }
+svg .mz { font-family: var(--font-mono); font-size: 11.5px; fill: var(--z); font-weight: 500; }
+svg .zl { font-size: 12px; font-weight: 600; fill: var(--z); letter-spacing: 0.04em; }
+svg .cap { font-size: 11px; font-weight: 600; fill: var(--muted); letter-spacing: 0.08em; }
+svg .lbl { font-size: 11px; fill: var(--muted); }
+svg .lblm { font-family: var(--font-mono); font-size: 11px; fill: var(--fg); }
+svg .arr { fill: none; stroke: var(--line); stroke-width: 1.5; }
+svg .arr.dash { stroke-dasharray: 5 4; }
+svg .ah { fill: var(--line); }
+svg .div { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+svg .sep { stroke: var(--z); stroke-width: 1; opacity: 0.5; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">Personal Knowledge Base · architecture walkthrough</p>
+  <h1>How a saved article becomes searchable</h1>
+  <p class="lead">One click in the browser sends a page to a local FastAPI app. The app turns it into a summary, an embedding and a few tags, and stores it in OpenSearch. The web app, scripts and any AI chat (over MCP) then search the same store through the same code.</p>
+  <div class="legend" aria-label="Colour key used in every diagram">
+    <span class="z-client"><i></i>Clients</span>
+    <span class="z-app"><i></i>The app (kb-app container)</span>
+    <span class="z-llm"><i></i>LLM provider (OpenAI-compatible)</span>
+    <span class="z-db"><i></i>OpenSearch (kb-opensearch container)</span>
+    <span class="z-web"><i></i>The open web</span>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#overview">System overview</a>
+    <a href="#capture">Capture pipeline</a>
+    <a href="#search">Search</a>
+    <a href="#storage">Storage model</a>
+    <a href="#mcp">MCP server</a>
+    <a href="#decisions">Design decisions</a>
+  </nav>
+</header>
+
+<!-- ================= 1. OVERVIEW ================= -->
+<section id="overview">
+  <header>
+    <p class="eyebrow">1 · System overview</p>
+    <h2>Four clients, one app, one database</h2>
+    <p>Everything runs on the owner's machine in two Docker containers, published on localhost only. Every client signs in with the same <code>API_TOKEN</code>.</p>
+  </header>
+
+  <figure>
+    <div class="fig-scroll">
+    <svg viewBox="0 0 1160 590" role="img" aria-label="Browser extension, web app, scripts and AI chat call the kb-app container through a token check. The JSON API and the MCP server both call the same pipeline and search code, which calls the LLM provider, fetches web pages when needed, and reads and writes OpenSearch. OpenSearch snapshots to a backup folder every two hours.">
+      <defs>
+        <marker id="o-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="o-ahs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <text class="cap" x="20" y="44">CLIENTS</text>
+      <text class="cap" x="840" y="44">OUTSIDE THE APP</text>
+
+      <!-- clients -->
+      <g class="z-client">
+        <rect class="box" x="20" y="70" width="190" height="76" rx="9"/>
+        <text class="t" x="115" y="102" text-anchor="middle">Browser extension</text>
+        <text class="s" x="115" y="124" text-anchor="middle">Chrome · Firefox · Readability</text>
+
+        <rect class="box" x="20" y="165" width="190" height="76" rx="9"/>
+        <text class="t" x="115" y="197" text-anchor="middle">Web app</text>
+        <text class="s" x="115" y="219" text-anchor="middle">React SPA at /app</text>
+
+        <rect class="box" x="20" y="260" width="190" height="76" rx="9"/>
+        <text class="t" x="115" y="292" text-anchor="middle">Scripts, curl</text>
+        <text class="s" x="115" y="314" text-anchor="middle">HTTP API · OpenAPI at /docs</text>
+
+        <rect class="box" x="20" y="380" width="190" height="76" rx="9"/>
+        <text class="t" x="115" y="412" text-anchor="middle">AI chat</text>
+        <text class="s" x="115" y="434" text-anchor="middle">any MCP client, e.g. Claude</text>
+      </g>
+
+      <!-- client arrows -->
+      <path class="arr" d="M210,108 H298" marker-end="url(#o-ah)"/>
+      <text class="lbl" x="255" y="100" text-anchor="middle">bearer</text>
+      <path class="arr" d="M210,203 H298" marker-end="url(#o-ah)"/>
+      <text class="lbl" x="255" y="195" text-anchor="middle">cookie + CSRF</text>
+      <path class="arr" d="M210,298 H298" marker-end="url(#o-ah)"/>
+      <text class="lbl" x="255" y="290" text-anchor="middle">bearer</text>
+      <path class="arr" d="M210,418 H298" marker-end="url(#o-ah)"/>
+      <text class="lbl" x="255" y="410" text-anchor="middle">bearer</text>
+
+      <!-- app container -->
+      <g class="z-app">
+        <rect class="zone" x="280" y="24" width="500" height="476" rx="14"/>
+        <text class="zl" x="298" y="50">kb-app · FastAPI · localhost:8000</text>
+
+        <rect class="plain" x="300" y="70" width="36" height="406" rx="6"/>
+        <text class="s" x="318" y="273" text-anchor="middle" transform="rotate(-90 318 273)">API_TOKEN check</text>
+
+        <rect class="box" x="360" y="70" width="180" height="260" rx="9"/>
+        <text class="t" x="450" y="98" text-anchor="middle">JSON API</text>
+        <text class="m" x="378" y="128">POST /capture</text>
+        <text class="m" x="378" y="150">POST /thoughts</text>
+        <text class="m" x="378" y="172">GET  /search</text>
+        <text class="m" x="378" y="194">GET  /items</text>
+        <text class="m" x="378" y="216">     /taxonomy …</text>
+        <text class="m" x="378" y="238">     /versions …</text>
+        <text class="m" x="378" y="260">POST /auth/login</text>
+
+        <rect class="box" x="360" y="360" width="180" height="116" rx="9"/>
+        <text class="t" x="450" y="386" text-anchor="middle">MCP server</text>
+        <text class="s" x="450" y="404" text-anchor="middle">streamable HTTP at /mcp</text>
+        <text class="m" x="450" y="432" text-anchor="middle">search · write_thought</text>
+        <text class="m" x="450" y="452" text-anchor="middle">tag_item · list_tags</text>
+
+        <rect class="box" x="580" y="70" width="180" height="406" rx="9"/>
+        <text class="t" x="670" y="98" text-anchor="middle">Pipeline</text>
+        <text class="s" x="670" y="116" text-anchor="middle">runs after the 202 reply</text>
+        <rect class="pill" x="596" y="130" width="148" height="26" rx="13"/>
+        <text class="m" x="670" y="147" text-anchor="middle">fetch → markdown</text>
+        <rect class="pill" x="596" y="170" width="148" height="26" rx="13"/>
+        <text class="m" x="670" y="187" text-anchor="middle">summarise</text>
+        <rect class="pill" x="596" y="210" width="148" height="26" rx="13"/>
+        <text class="m" x="670" y="227" text-anchor="middle">embed</text>
+        <rect class="pill" x="596" y="250" width="148" height="26" rx="13"/>
+        <text class="m" x="670" y="267" text-anchor="middle">tag</text>
+        <rect class="pill" x="596" y="290" width="148" height="26" rx="13"/>
+        <text class="m" x="670" y="307" text-anchor="middle">store</text>
+        <line class="sep" x1="580" y1="340" x2="760" y2="340"/>
+        <text class="t" x="670" y="370" text-anchor="middle">Hybrid search</text>
+        <text class="s" x="670" y="392" text-anchor="middle">embed the query,</text>
+        <text class="s" x="670" y="410" text-anchor="middle">BM25 + k-NN on items,</text>
+        <text class="s" x="670" y="428" text-anchor="middle">20 best matches</text>
+      </g>
+      <path class="arr" d="M670,156 V168" marker-end="url(#o-ahs)"/>
+      <path class="arr" d="M670,196 V208" marker-end="url(#o-ahs)"/>
+      <path class="arr" d="M670,236 V248" marker-end="url(#o-ahs)"/>
+      <path class="arr" d="M670,276 V288" marker-end="url(#o-ahs)"/>
+
+      <!-- auth to API/MCP -->
+      <path class="arr" d="M336,108 H358" marker-end="url(#o-ahs)"/>
+      <path class="arr" d="M336,203 H358" marker-end="url(#o-ahs)"/>
+      <path class="arr" d="M336,298 H358" marker-end="url(#o-ahs)"/>
+      <path class="arr" d="M336,418 H358" marker-end="url(#o-ahs)"/>
+      <!-- API/MCP to core -->
+      <path class="arr" d="M540,200 H578" marker-end="url(#o-ah)"/>
+      <path class="arr" d="M540,418 H578" marker-end="url(#o-ah)"/>
+
+      <!-- externals -->
+      <g class="z-llm">
+        <rect class="box" x="840" y="70" width="300" height="124" rx="9"/>
+        <text class="t" x="856" y="98">LLM provider</text>
+        <text class="s" x="856" y="118">OpenAI-compatible endpoint</text>
+        <text class="mz" x="856" y="148">gpt-4o-mini</text>
+        <text class="s" x="1124" y="148" text-anchor="end">summarise, tag</text>
+        <text class="mz" x="856" y="172">text-embedding-3-small</text>
+        <text class="s" x="1124" y="172" text-anchor="end">embed</text>
+      </g>
+      <g class="z-web">
+        <rect class="box" x="840" y="214" width="300" height="80" rx="9"/>
+        <text class="t" x="856" y="242">Source web page</text>
+        <text class="s" x="856" y="262">fetched by crawl4ai only when the</text>
+        <text class="s" x="856" y="280">request carries no page HTML</text>
+      </g>
+      <g class="z-db">
+        <rect class="zone" x="828" y="306" width="324" height="282" rx="14"/>
+        <rect class="box" x="840" y="318" width="300" height="158" rx="9"/>
+        <text class="t" x="856" y="346">OpenSearch 3.9</text>
+        <text class="s" x="856" y="364">kb-opensearch · localhost:9201</text>
+        <text class="mz" x="856" y="394">items</text>
+        <text class="s" x="950" y="394">current view, searched</text>
+        <text class="mz" x="856" y="416">versions</text>
+        <text class="s" x="950" y="416">append-only history</text>
+        <text class="mz" x="856" y="438">taxonomy</text>
+        <text class="s" x="950" y="438">tags + version counter</text>
+        <text class="mz" x="856" y="460">kb-hybrid</text>
+        <text class="s" x="950" y="460">search pipeline</text>
+
+        <rect class="plain" x="840" y="512" width="300" height="62" rx="9"/>
+        <text class="t" x="856" y="538">Backups</text>
+        <text class="s" x="856" y="558">snapshot every 2 h into KB_BACKUP_DIR, kept 14 days</text>
+      </g>
+      <path class="arr" d="M990,476 V510" marker-end="url(#o-ah)"/>
+
+      <!-- core to externals -->
+      <path class="arr" d="M760,140 H838" marker-end="url(#o-ah)"/>
+      <text class="lbl" x="800" y="132" text-anchor="middle">LLM calls</text>
+      <path class="arr" d="M760,254 H838" marker-end="url(#o-ah)"/>
+      <text class="lbl" x="800" y="246" text-anchor="middle">fetch</text>
+      <path class="arr" d="M762,400 H838" marker-start="url(#o-ah)" marker-end="url(#o-ah)"/>
+      <text class="lbl" x="800" y="392" text-anchor="middle">read / write</text>
+    </svg>
+    </div>
+    <figcaption>The JSON API and the MCP server are two doors into the same Python functions: <code>POST /thoughts</code> and the <code>write_thought</code> tool both call <code>Pipeline.write</code>; <code>GET /search</code> and the <code>search</code> tool both call <code>search()</code>. The storage and the LLM sit behind small interfaces, so tests swap in an in-memory store and a fake LLM.</figcaption>
+  </figure>
+
+  <div class="notes">
+    <div>
+      <h3>Browser extension</h3>
+      <p>Runs Mozilla Readability inside the tab and sends the article HTML as you see it, so logins, paywalls you passed and consent walls don't matter. Optional tags and a private note go with it.</p>
+    </div>
+    <div>
+      <h3>Web app</h3>
+      <p>React + TypeScript over the JSON API. Logs in once with the token, which then lives in an HttpOnly cookie; every request adds a CSRF header that other sites cannot send.</p>
+    </div>
+    <div>
+      <h3>The app</h3>
+      <p>FastAPI with background tasks. It holds every rule (versions, tags, re-tags); the clients only hold view state. No agent framework, only plain HTTP calls to the LLM.</p>
+    </div>
+    <div>
+      <h3>OpenSearch</h3>
+      <p>The only database. Chosen for its built-in hybrid search (keywords + vectors in one query). Three indices, strict mappings, data in a Docker volume.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2. CAPTURE ================= -->
+<section id="capture">
+  <header>
+    <p class="eyebrow">2 · Capture pipeline</p>
+    <h2>From the Capture button to a tagged, searchable Item</h2>
+    <p>The request does only the cheap work and answers <code>202</code> right away. The three LLM calls run in a background task, so the popup never waits for the model.</p>
+  </header>
+
+  <figure>
+    <div class="fig-scroll">
+    <svg viewBox="0 0 1100 1100" role="img" aria-label="Swimlane flowchart of a capture. In the request: the extension extracts the article and posts it; the app validates, converts HTML to markdown, stores a pending Version and replies 202. In the background: if the text is unchanged since the previous Version its summary and embedding are reused, otherwise the app summarises and embeds it with the LLM; if the owner picked tags tagging is skipped, otherwise the LLM chooses tags from the taxonomy; finally the enriched Version and the Item are written to OpenSearch.">
+      <defs>
+        <marker id="c-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <!-- lanes -->
+      <g class="z-client"><rect class="lane" x="20" y="20" width="210" height="1060" rx="10"/><rect class="lane-head" x="21" y="21" width="208" height="36" rx="9"/><text class="zl" x="125" y="44" text-anchor="middle">BROWSER EXTENSION</text></g>
+      <g class="z-app"><rect class="lane" x="250" y="20" width="400" height="1060" rx="10"/><rect class="lane-head" x="251" y="21" width="398" height="36" rx="9"/><text class="zl" x="450" y="44" text-anchor="middle">APP</text></g>
+      <g class="z-llm"><rect class="lane" x="670" y="20" width="200" height="1060" rx="10"/><rect class="lane-head" x="671" y="21" width="198" height="36" rx="9"/><text class="zl" x="770" y="44" text-anchor="middle">LLM PROVIDER</text></g>
+      <g class="z-db"><rect class="lane" x="890" y="20" width="190" height="1060" rx="10"/><rect class="lane-head" x="891" y="21" width="188" height="36" rx="9"/><text class="zl" x="985" y="44" text-anchor="middle">OPENSEARCH</text></g>
+
+      <!-- R1-R2 browser -->
+      <g class="z-client">
+        <rect class="box" x="35" y="80" width="180" height="60" rx="9"/>
+        <text class="t" x="125" y="105" text-anchor="middle">Owner clicks Capture</text>
+        <text class="s" x="125" y="125" text-anchor="middle">optional tags and note</text>
+        <rect class="box" x="35" y="170" width="180" height="60" rx="9"/>
+        <text class="t" x="125" y="195" text-anchor="middle">Readability extracts</text>
+        <text class="s" x="125" y="215" text-anchor="middle">article HTML, or whole page</text>
+        <rect class="box" x="35" y="350" width="180" height="60" rx="9"/>
+        <text class="t" x="125" y="375" text-anchor="middle">Popup shows a link</text>
+        <text class="s" x="125" y="395" text-anchor="middle">"Open in Knowledge Base"</text>
+      </g>
+      <path class="arr" d="M125,140 V168" marker-end="url(#c-ah)"/>
+
+      <!-- request phase, app -->
+      <g class="z-app">
+        <rect class="box" x="330" y="170" width="240" height="60" rx="9"/>
+        <text class="t" x="450" y="195" text-anchor="middle">Validate</text>
+        <text class="s" x="450" y="215" text-anchor="middle">token · normalise URL · tags known</text>
+        <rect class="box" x="330" y="260" width="240" height="60" rx="9"/>
+        <text class="t" x="450" y="285" text-anchor="middle">Convert to markdown</text>
+        <text class="s" x="450" y="305" text-anchor="middle">crawl4ai · fetches URL if no HTML</text>
+        <rect class="box" x="330" y="350" width="240" height="60" rx="9"/>
+        <text class="t" x="450" y="375" text-anchor="middle">Store pending Version</text>
+        <text class="s" x="450" y="395" text-anchor="middle">id = item_id : captured_at</text>
+      </g>
+      <path class="arr" d="M215,200 H328" marker-end="url(#c-ah)"/>
+      <text class="lblm" x="272" y="192" text-anchor="middle">POST /capture</text>
+      <text class="lbl" x="272" y="216" text-anchor="middle">html · tags · note</text>
+      <path class="arr" d="M450,230 V258" marker-end="url(#c-ah)"/>
+      <path class="arr" d="M450,320 V348" marker-end="url(#c-ah)"/>
+      <path class="arr dash" d="M330,380 H217" marker-end="url(#c-ah)"/>
+      <text class="lblm" x="272" y="372" text-anchor="middle">202</text>
+
+      <g class="z-db">
+        <rect class="box" x="905" y="350" width="160" height="60" rx="9"/>
+        <text class="mz" x="985" y="375" text-anchor="middle">versions</text>
+        <text class="s" x="985" y="395" text-anchor="middle">status: pending</text>
+      </g>
+      <path class="arr" d="M570,380 H903" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="770" y="372" text-anchor="middle">write</text>
+
+      <!-- phase divider -->
+      <line class="div" x1="20" y1="440" x2="1080" y2="440"/>
+      <text class="s" x="36" y="432">request ends here</text>
+      <text class="s" x="36" y="462">background task ↓</text>
+
+      <!-- background phase -->
+      <path class="arr" d="M450,410 V474" marker-end="url(#c-ah)"/>
+      <g class="z-app">
+        <polygon class="plain" points="450,476 560,520 450,564 340,520"/>
+        <text class="t" x="450" y="516" text-anchor="middle" style="font-size:12.5px">Same text as the</text>
+        <text class="t" x="450" y="534" text-anchor="middle" style="font-size:12.5px">previous Version?</text>
+
+        <rect class="box" x="330" y="600" width="240" height="60" rx="9"/>
+        <text class="t" x="450" y="625" text-anchor="middle">Summarise</text>
+        <text class="s" x="450" y="645" text-anchor="middle">title · summary · key points · date</text>
+        <rect class="box" x="330" y="690" width="240" height="60" rx="9"/>
+        <text class="t" x="450" y="715" text-anchor="middle">Embed</text>
+        <text class="s" x="450" y="735" text-anchor="middle">title + summary → 1536 numbers</text>
+
+        <polygon class="plain" points="450,786 560,830 450,874 340,830"/>
+        <text class="t" x="450" y="826" text-anchor="middle" style="font-size:12.5px">Owner picked</text>
+        <text class="t" x="450" y="844" text-anchor="middle" style="font-size:12.5px">tags in the popup?</text>
+
+        <rect class="box" x="330" y="910" width="240" height="60" rx="9"/>
+        <text class="t" x="450" y="935" text-anchor="middle">Tag</text>
+        <text class="s" x="450" y="955" text-anchor="middle">choose paths from the taxonomy</text>
+        <rect class="box" x="330" y="1000" width="240" height="60" rx="9"/>
+        <text class="t" x="450" y="1025" text-anchor="middle">Store enriched Version</text>
+        <text class="s" x="450" y="1045" text-anchor="middle">page text dropped · Item upserted</text>
+      </g>
+
+      <!-- decision branches -->
+      <path class="arr" d="M450,564 V598" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="462" y="586">no</text>
+      <path class="arr" d="M340,520 H290 V770 H448" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="315" y="512" text-anchor="middle">yes</text>
+      <text class="lbl" x="280" y="645" text-anchor="middle" transform="rotate(-90 280 645)">reuse summary + embedding</text>
+      <path class="arr" d="M450,660 V688" marker-end="url(#c-ah)"/>
+      <path class="arr" d="M450,750 V784" marker-end="url(#c-ah)"/>
+      <path class="arr" d="M450,874 V908" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="462" y="896">no</text>
+      <path class="arr" d="M340,830 H290 V1030 H328" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="315" y="822" text-anchor="middle">yes</text>
+      <text class="lbl" x="280" y="930" text-anchor="middle" transform="rotate(-90 280 930)">skip tagging</text>
+      <path class="arr" d="M450,970 V998" marker-end="url(#c-ah)"/>
+
+      <!-- LLM calls -->
+      <g class="z-llm">
+        <rect class="box" x="685" y="600" width="170" height="60" rx="9"/>
+        <text class="t" x="770" y="625" text-anchor="middle">Chat model</text>
+        <text class="s" x="770" y="645" text-anchor="middle">structured output</text>
+        <rect class="box" x="685" y="690" width="170" height="60" rx="9"/>
+        <text class="t" x="770" y="715" text-anchor="middle">Embedding model</text>
+        <text class="s" x="770" y="735" text-anchor="middle">1536-dim vector</text>
+        <rect class="box" x="685" y="910" width="170" height="60" rx="9"/>
+        <text class="t" x="770" y="935" text-anchor="middle">Chat model</text>
+        <text class="s" x="770" y="955" text-anchor="middle">returns tag paths</text>
+      </g>
+      <path class="arr" d="M572,630 H683" marker-start="url(#c-ah)" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="627" y="622" text-anchor="middle">≤ 24k chars</text>
+      <path class="arr" d="M572,720 H683" marker-start="url(#c-ah)" marker-end="url(#c-ah)"/>
+      <path class="arr" d="M572,940 H683" marker-start="url(#c-ah)" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="627" y="932" text-anchor="middle">summary only</text>
+
+      <g class="z-db">
+        <rect class="box" x="905" y="1000" width="160" height="60" rx="9"/>
+        <text class="mz" x="985" y="1025" text-anchor="middle">versions + items</text>
+        <text class="s" x="985" y="1045" text-anchor="middle">enriched · current view</text>
+      </g>
+      <path class="arr" d="M570,1030 H903" marker-end="url(#c-ah)"/>
+      <text class="lbl" x="770" y="1022" text-anchor="middle">write</text>
+    </svg>
+    </div>
+    <figcaption>Any exception in the background marks the Version <code>failed</code> with the error and leaves the previous Version as the Item's current one. If the Version was deleted while the LLM was working, the result is dropped instead of bringing the Item back. Capturing the same unchanged page again costs no LLM call.</figcaption>
+  </figure>
+
+  <div class="notes">
+    <div>
+      <h3>One Item per URL</h3>
+      <p>The URL is normalised first (lowercase host, no trailing slash, tracking parameters such as <code>utm_*</code> removed, query sorted). Its SHA-256 is the Item id, so the same article saved twice lands on one Item with two Versions.</p>
+    </div>
+    <div>
+      <h3>Tags only from the taxonomy</h3>
+      <p>The tag prompt lists the owner's tag paths with descriptions. Paths the model invents are dropped. Tags the owner removed from this Item are never offered again. An empty taxonomy means no tag call at all.</p>
+    </div>
+    <div>
+      <h3>Every result records how it was made</h3>
+      <p>Each Version stores the model, prompt version, embedding model and taxonomy version it was produced with. That is how the pipeline knows when an old summary can be reused and which Items a re-tag should visit.</p>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th scope="col"></th><th scope="col">Article</th><th scope="col">Thought (own text)</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Comes from</th><td>Extension, or a URL pasted in the web app</td><td>Web app, or the <code>write_thought</code> MCP tool</td></tr>
+        <tr><th scope="row">Fetched</th><td>Yes, or HTML sent by the browser</td><td>No, there is no source</td></tr>
+        <tr><th scope="row">LLM calls</th><td>Summarise, embed, tag</td><td>Embed, tag (never summarised)</td></tr>
+        <tr><th scope="row">Text kept</th><td>Summary and key points; the page text is dropped</td><td>The full text as written: it is the only copy</td></tr>
+        <tr><th scope="row">Visible</th><td>Item fills in once enrichment finishes</td><td>At once; tags and search by meaning follow</td></tr>
+        <tr><th scope="row">Item id</th><td>SHA-256 of the normalised URL</td><td>SHA-256 of the instant it was first written</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 3. SEARCH ================= -->
+<section id="search">
+  <header>
+    <p class="eyebrow">3 · Search</p>
+    <h2>Keywords and meaning in one query</h2>
+    <p>The search box and the MCP <code>search</code> tool run the same function. One embedding call per search; OpenSearch does the rest.</p>
+  </header>
+
+  <figure>
+    <div class="fig-scroll">
+    <svg viewBox="0 0 1100 320" role="img" aria-label="A search query goes two ways: straight to a BM25 keyword match, and through one embedding call to a k-NN vector match. Inside OpenSearch the kb-hybrid pipeline normalises both scores to 0 to 1, averages them with equal weights and returns the 20 best Items.">
+      <defs>
+        <marker id="s-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <g class="z-client">
+        <rect class="box" x="20" y="120" width="180" height="80" rx="9"/>
+        <text class="t" x="110" y="148" text-anchor="middle">Search query</text>
+        <text class="s" x="110" y="168" text-anchor="middle">web app search box</text>
+        <text class="s" x="110" y="186" text-anchor="middle">or MCP search tool</text>
+      </g>
+
+      <g class="z-llm">
+        <rect class="box" x="240" y="190" width="150" height="80" rx="9"/>
+        <text class="t" x="315" y="220" text-anchor="middle">Embed query</text>
+        <text class="s" x="315" y="240" text-anchor="middle">1 embedding call</text>
+      </g>
+      <text class="lbl" x="315" y="292" text-anchor="middle">if it fails:</text>
+      <text class="lbl" x="315" y="307" text-anchor="middle">keywords only</text>
+
+      <g class="z-db">
+        <rect class="zone" x="420" y="20" width="470" height="285" rx="14"/>
+        <text class="zl" x="438" y="44">OpenSearch · items index</text>
+
+        <rect class="box" x="440" y="60" width="200" height="80" rx="9"/>
+        <text class="t" x="540" y="86" text-anchor="middle">Keyword match (BM25)</text>
+        <text class="s" x="540" y="106" text-anchor="middle">title ×2, summary,</text>
+        <text class="s" x="540" y="124" text-anchor="middle">key points, text, note</text>
+
+        <rect class="box" x="440" y="190" width="200" height="80" rx="9"/>
+        <text class="t" x="540" y="216" text-anchor="middle">Meaning match (k-NN)</text>
+        <text class="s" x="540" y="236" text-anchor="middle">50 nearest by cosine</text>
+        <text class="s" x="540" y="254" text-anchor="middle">HNSW index on embedding</text>
+
+        <rect class="box" x="680" y="120" width="190" height="80" rx="9"/>
+        <text class="t" x="775" y="146" text-anchor="middle">kb-hybrid pipeline</text>
+        <text class="s" x="775" y="166" text-anchor="middle">min-max normalise both</text>
+        <text class="s" x="775" y="184" text-anchor="middle">average, 0.5 + 0.5</text>
+
+        <text class="lbl" x="655" y="292" text-anchor="middle">tag, kind and saved-date filters narrow both matches</text>
+      </g>
+
+      <g class="z-client">
+        <rect class="box" x="920" y="120" width="160" height="80" rx="9"/>
+        <text class="t" x="1000" y="148" text-anchor="middle">20 best Items</text>
+        <text class="s" x="1000" y="168" text-anchor="middle">with relative score</text>
+        <text class="s" x="1000" y="186" text-anchor="middle">best match first</text>
+      </g>
+
+      <path class="arr" d="M200,160 H220 V100 H438" marker-end="url(#s-ah)"/>
+      <text class="lbl" x="330" y="92" text-anchor="middle">query text</text>
+      <path class="arr" d="M220,160 V230 H238" marker-end="url(#s-ah)"/>
+      <path class="arr" d="M390,230 H438" marker-end="url(#s-ah)"/>
+      <text class="lbl" x="414" y="222" text-anchor="middle">vector</text>
+      <path class="arr" d="M640,100 H660 V150 H678" marker-end="url(#s-ah)"/>
+      <path class="arr" d="M640,230 H660 V170 H678" marker-end="url(#s-ah)"/>
+      <path class="arr" d="M870,160 H918" marker-end="url(#s-ah)"/>
+    </svg>
+    </div>
+    <figcaption>Scores are relative to the other results of the same search, and there is no relevance cutoff yet, so the last of the 20 may be only loosely related. The MCP tool tells the agent this and passes the score along.</figcaption>
+  </figure>
+</section>
+
+<!-- ================= 4. STORAGE ================= -->
+<section id="storage">
+  <header>
+    <p class="eyebrow">4 · Storage model</p>
+    <h2>History in one index, the current view in another</h2>
+    <p>Versions are never updated in place. Each capture or re-tag appends a new one, and the Item document is overwritten with a copy of the newest. Search reads only <code>items</code>, so there is no "is current" flag to filter on.</p>
+  </header>
+
+  <figure>
+    <div class="fig-scroll">
+    <svg viewBox="0 0 1100 330" role="img" aria-label="Three Versions of one Item in the versions index, oldest to newest: a capture, a second capture with unchanged text that reused the summary, and a re-tag that added a more specific tag. The newest is copied into the Item document in the items index, which also holds the owner's annotations. The taxonomy index holds the tags and a version counter.">
+      <defs>
+        <marker id="d-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+      <g class="z-db">
+        <text class="zl" x="20" y="30">versions · append-only · _id = item_id : captured_at</text>
+
+        <rect class="plain" x="20" y="48" width="220" height="128" rx="9"/>
+        <text class="mz" x="36" y="74">2026-10-01 09:14</text>
+        <text class="t" x="36" y="98">Capture</text>
+        <text class="s" x="36" y="118">from the extension</text>
+        <text class="s" x="36" y="138">summary, key points, vector</text>
+        <text class="m" x="36" y="162">tags: ai/agents</text>
+
+        <rect class="plain" x="270" y="48" width="220" height="128" rx="9"/>
+        <text class="mz" x="286" y="74">2026-10-20 18:02</text>
+        <text class="t" x="286" y="98">Capture again</text>
+        <text class="s" x="286" y="118">same text, so summary and</text>
+        <text class="s" x="286" y="138">vector reused, no LLM call</text>
+        <text class="m" x="286" y="162">tags: ai/agents</text>
+
+        <rect class="box" x="520" y="48" width="220" height="128" rx="9"/>
+        <text class="mz" x="536" y="74">2026-10-28 11:40</text>
+        <text class="t" x="536" y="98">Re-tag</text>
+        <text class="s" x="536" y="118">new tag in the taxonomy;</text>
+        <text class="s" x="536" y="138">child replaces its parent</text>
+        <text class="m" x="536" y="162">tags: ai/agents/mcp</text>
+
+        <rect class="box" x="820" y="48" width="260" height="210" rx="9"/>
+        <text class="zl" x="836" y="74">items · current view</text>
+        <text class="s" x="836" y="94">_id = sha256(normalised URL)</text>
+        <text class="t" x="836" y="120">Newest Version's</text>
+        <text class="s" x="836" y="140">title, summary, key points,</text>
+        <text class="s" x="836" y="158">tags and embedding</text>
+        <line class="sep" x1="836" y1="174" x2="1064" y2="174"/>
+        <text class="t" x="836" y="198">Owner's annotations</text>
+        <text class="s" x="836" y="218">note, tags added, tags rejected;</text>
+        <text class="s" x="836" y="236">kept through every new Capture</text>
+
+        <rect class="plain" x="20" y="214" width="720" height="96" rx="9"/>
+        <text class="zl" x="36" y="240">taxonomy</text>
+        <text class="s" x="36" y="262">One document per tag (path such as ai/agents/mcp, plus a description the LLM reads),</text>
+        <text class="s" x="36" y="280">and one counter with the taxonomy version. Adding a tag raises the version, and a re-tag</text>
+        <text class="s" x="36" y="298">visits untagged Items and Items tagged with the new tag's parent.</text>
+      </g>
+      <path class="arr" d="M240,112 H268" marker-end="url(#d-ah)"/>
+      <path class="arr" d="M490,112 H518" marker-end="url(#d-ah)"/>
+      <path class="arr" d="M740,112 H818" marker-end="url(#d-ah)"/>
+      <text class="lbl" x="779" y="104" text-anchor="middle">copied</text>
+    </svg>
+    </div>
+    <figcaption>The example Item has three Versions. The owner can delete any Version but the last; the Item then shows the newest remaining one. Renaming a tag is the one change applied to old Versions too, because a rename fixes spelling, never meaning.</figcaption>
+  </figure>
+</section>
+
+<!-- ================= 5. MCP ================= -->
+<section id="mcp">
+  <header>
+    <p class="eyebrow">5 · MCP server</p>
+    <h2>Any AI chat can use the knowledge base</h2>
+    <p>The app serves an MCP endpoint at <code>/mcp</code> (streamable HTTP, stateless, behind the same bearer token). Agents get four tools that call the same functions the web app uses, so an agent cannot do anything the owner couldn't do in the UI.</p>
+  </header>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th scope="col">Tool</th><th scope="col">What it does</th><th scope="col">Same code as</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><code>search</code></th><td>Hybrid search with optional tag, kind and saved-date filters. Returns 20 Items with summary, key points, note, score and a link into the web app.</td><td><code>GET /search</code></td></tr>
+        <tr><th scope="row"><code>write_thought</code></th><td>Saves a Thought. Keyword-searchable at once, tagged and embedded in the background.</td><td><code>POST /thoughts</code></td></tr>
+        <tr><th scope="row"><code>tag_item</code></th><td>Adds one of the owner's tags to an Item, only when the owner asks. The tag survives later captures and re-tags.</td><td><code>POST /items/{id}/tags</code></td></tr>
+        <tr><th scope="row"><code>list_tags</code></th><td>Returns the taxonomy: every tag path with its description.</td><td><code>GET /taxonomy</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>Register it in Claude Code</h3>
+      <p>One command while the app runs. Then ask "what do I have on Hamilton from this week?" or "save this as a Thought".</p>
+    </div>
+    <div>
+      <h3>Agents stay outside the pipeline</h3>
+      <p>The capture steps are known in advance, so they run as fixed code. Open-ended work (researching around an Item, proposing tags) belongs to an agent that calls these tools.</p>
+    </div>
+  </div>
+  <pre class="cmd">claude mcp add --transport http kb http://localhost:8000/mcp \
+  --header "Authorization: Bearer $API_TOKEN"</pre>
+</section>
+
+<!-- ================= 6. DECISIONS ================= -->
+<section id="decisions">
+  <header>
+    <p class="eyebrow">6 · Design decisions</p>
+    <h2>Why it is built this way</h2>
+    <p>Each of these is an architecture decision record in <code>docs/adr/</code>.</p>
+  </header>
+  <ol class="adrs">
+    <li><span class="num">ADR-0001</span><div><strong>OpenSearch is the only database</strong><p>Its hybrid search pipeline was the deciding feature, and one store is what a self-hoster can run. Considered: Postgres with pgvector, Meilisearch, Qdrant. Cost: the embedding is stored twice per Item (about 6 KB).</p></div></li>
+    <li><span class="num">ADR-0002</span><div><strong>Versions keep the summary, not the full page</strong><p>Summarise reads the page once; tagging reads only the summary, so the taxonomy can change and Items be re-tagged without fetching again. Cost: an old Version can't be re-summarised with a better model. Thoughts are the exception and keep their full text.</p></div></li>
+    <li><span class="num">ADR-0003</span><div><strong>No agent framework in the capture path</strong><p>v1 used a LangChain agent. v2 is a fixed Python pipeline with two structured-output calls and one embedding call through a thin adapter: deterministic, faster and cheaper. Automation goes through MCP.</p></div></li>
+    <li><span class="num">ADR-0004</span><div><strong>The web UI is React over the JSON API</strong><p>The three-pane layout with search as you type outgrew Jinja and htmx. The new app talks only to the same JSON API as the extension and the MCP server; the backend stays the single place for every rule.</p></div></li>
+  </ol>
+</section>
+
+</div>
+</body>
+</html>
