@@ -175,7 +175,7 @@ class SessionMeta(BaseModel):
 
 
 class ModelUsage(BaseModel):
-    """Tokens one model used in a Session."""
+    """Tokens one model used in a Session. Input excludes cache reads; thinking is part of the output."""
 
     model: str
     input_tokens: int = 0
