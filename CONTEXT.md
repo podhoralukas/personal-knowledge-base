@@ -69,7 +69,7 @@ The agent's own full record of a Session, kept where the agent keeps it: on the 
 _Avoid_: log, history, raw conversation
 
 **Summary File**:
-The file a Session Summary is written to before it reaches the knowledge base: its durable copy, readable without the knowledge base running. Each Version of a Session has its own Summary File, so the knowledge base's Sessions, history included, can be rebuilt from them.
+The file the knowledge base writes a Session Summary to when the agent sends it: its durable copy, readable without the knowledge base running. Each Version of a Session has its own Summary File, so the knowledge base's Sessions, history included, can be rebuilt from them.
 _Avoid_: export, backup (that is the snapshot of the indices)
 
 **Project**:

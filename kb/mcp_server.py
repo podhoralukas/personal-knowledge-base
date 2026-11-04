@@ -1,9 +1,11 @@
-"""MCP server for agents acting for the Owner: search, write a Thought, tag an Item, list the Taxonomy."""
+"""MCP server for agents acting for the Owner: search, write a Thought, save a Session Summary, tag an Item, list the
+Taxonomy."""
 
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from datetime import date, datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -15,16 +17,28 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from kb.auth import valid_token
 from kb.config import MCP_PATH, MCP_THOUGHT_TEXT_CHARS
-from kb.models import Channel, DateRange, Kind, Match, ThoughtRequest
+from kb.models import (
+    Channel,
+    DateRange,
+    Kind,
+    Match,
+    SessionMeta,
+    SessionRecord,
+    SessionSummary,
+    ThoughtRequest,
+    VersionStatus,
+)
 from kb.owner_tags import tag_item as add_owner_tag
 from kb.pipeline.run import Pipeline
 from kb.search import search as hybrid_search
+from kb.sessions import save_summary
 
 log = logging.getLogger(__name__)
 
 INSTRUCTIONS = """The Owner's personal knowledge base: articles they saved and Thoughts they wrote, tagged against \
 their own Taxonomy. Search it when the Owner asks what they have on a topic. Write a Thought only when the Owner \
-asks to save something. Tag an Item only when the Owner explicitly asks for that tag."""
+asks to save something. Save a Session Summary only when the Owner asks for one. Tag an Item only when the Owner \
+explicitly asks for that tag."""
 
 
 class Found(BaseModel):
@@ -119,7 +133,7 @@ def item_link(base_url: str, item_id: str) -> str:
     return f"{base_url.rstrip('/')}/open/items/{item_id}"
 
 
-def mcp_server(pipeline: Callable[[], Pipeline], background: Background) -> FastMCP:
+def mcp_server(pipeline: Callable[[], Pipeline], background: Background, summary_folder: Path | None = None) -> FastMCP:
     """`pipeline` is read per call: the app builds it on startup."""
     server = FastMCP(
         "Knowledge Base",
@@ -172,6 +186,38 @@ def mcp_server(pipeline: Callable[[], Pipeline], background: Background) -> Fast
             raise ToolError(exc.errors()[0]["msg"].removeprefix("Value error, "))
         version = pipe.write(thought, Channel.MCP)
         background.start(pipe.enrich(version))
+        return Written(item_id=version.item_id, link=item_link(base_url(ctx), version.item_id))
+
+    @server.tool()
+    def save_session_summary(
+        session: SessionMeta,
+        summary: SessionSummary,
+        ctx: Context,
+        project: Annotated[
+            str | None,
+            Field(description="project/<name> or none: the Owner's answer when this tool says the folder has none"),
+        ] = None,
+        always_ask: Annotated[
+            bool, Field(description="The Owner wants to be asked on every summary from this folder")
+        ] = False,
+        after_the_fact: Annotated[
+            bool, Field(description="Written later from the Transcript, by an agent that was not in the Session")
+        ] = False,
+    ) -> Written:
+        """Save a summary of an agent Session: `session` says which one and where it ran, `summary` is what you
+        write about it, leaving out empty sections. A Decision carries its `reason` and the `rejected` alternative,
+        a Problem its `cause` and `fix`; keep each list item on one line. Use it only when the Owner asks. Saving
+        the same summary again changes nothing. It is searchable by keywords at once, by meaning within seconds."""
+        if summary_folder is None:
+            raise ToolError("SESSION_SUMMARY_DIR is not set on the server")
+        pipe = pipeline()
+        record = SessionRecord(meta=session, summary=summary, after_the_fact=after_the_fact)
+        try:
+            version = save_summary(pipe, summary_folder, record, project, always_ask)
+        except ValueError as exc:
+            raise ToolError(str(exc))
+        if version.status is VersionStatus.PENDING:
+            background.start(pipe.enrich(version))
         return Written(item_id=version.item_id, link=item_link(base_url(ctx), version.item_id))
 
     @server.tool()

@@ -12,13 +12,11 @@ from kb.models import (
     Decision,
     Item,
     Kind,
-    ModelUsage,
     Problem,
     SessionMeta,
     SessionRecord,
     SessionStatus,
     SessionSummary,
-    SessionUsage,
     ThoughtEdit,
     Version,
     VersionStatus,
@@ -49,13 +47,7 @@ def summary(**overrides) -> SessionSummary:
 
 def record(summary_overrides: dict | None = None, agent=Agent.CLAUDE_CODE, session_id="8f2c") -> SessionRecord:
     return SessionRecord(
-        meta=SessionMeta(agent=agent, session_id=session_id, folder="/work/kb", started_at=T1, ended_at=T2),
-        usage=SessionUsage(
-            models=[ModelUsage(model="claude-opus", input_tokens=10, output_tokens=5)],
-            owner_turns=3,
-            tool_calls=12,
-            cost_usd=0.42,
-        ),
+        meta=SessionMeta(agent=agent, session_id=session_id, folder="/work/kb", model="claude-opus"),
         summary=summary(**(summary_overrides or {})),
     )
 
@@ -128,7 +120,7 @@ class TestVersion:
             Version(id="x", item_id="y", captured_at=T1, channel=Channel.MANUAL, content_hash="h", session=record())
 
     def test_a_session_is_not_captured(self):
-        with pytest.raises(ValidationError, match="imported, not captured"):
+        with pytest.raises(ValidationError, match="saved by an agent, not captured"):
             CaptureRequest(url="https://example.com", channel=Channel.SESSION)
 
     def test_a_pending_session_already_shows_as_an_item(self):

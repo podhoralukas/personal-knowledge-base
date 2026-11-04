@@ -159,10 +159,11 @@ To capture, click the toolbar icon (or press `Alt+Shift+K`). Optionally tick tag
 
 ### MCP server (agents)
 
-The app serves an MCP endpoint at `/mcp` (streamable HTTP, protected by the same `API_TOKEN` bearer token), so an AI chat can use your knowledge base. It offers four tools:
+The app serves an MCP endpoint at `/mcp` (streamable HTTP, protected by the same `API_TOKEN` bearer token), so an AI chat can use your knowledge base. It offers five tools:
 
 - `search`: the search page's query and filters
 - `write_thought`: save a Thought
+- `save_session_summary`: save a summary of the session (only when you ask it to)
 - `tag_item`: add one of your tags to an Item (only when you ask it to)
 - `list_tags`: read the taxonomy
 
@@ -173,6 +174,18 @@ claude mcp add --transport http kb http://localhost:8000/mcp --header "Authoriza
 ```
 
 Then ask, for example, "what do I have on Hamilton from this week?" or "save this as a Thought". Each search embeds your query (one embedding call). A written Thought is tagged and embedded in the background, as it is from the UI.
+
+### Session Summaries (agents)
+
+A Session Summary records what an AI agent session (Claude Code or Codex) decided and fixed, so you can find it again. When you ask, the agent writes the summary and sends it through the MCP tool `save_session_summary`. The app writes it as a Markdown file, the Summary File, into `SESSION_SUMMARY_DIR`, then adds it to the knowledge base and embeds it (one embedding call). If the stack is down nothing is saved: the agent tells you, and you ask again later.
+
+The files are the record: readable in any notes app, never rewritten. To rebuild the knowledge base's sessions from them after a restore, or to retry a summary whose embedding failed:
+
+```bash
+curl -X POST -H "Authorization: Bearer $API_TOKEN" http://localhost:8000/sessions/import
+```
+
+`projects.yaml` in the same folder maps a session's folder to its Project, a tag under `project/`, to `none`, or to `ask` (decide on each summary). It fills up as you go: for a folder not in it the agent asks you, and the app records your answer and creates the tag.
 
 ### HTTP API
 
@@ -195,6 +208,7 @@ All settings are read from `.env` (see [.env.example](.env.example)) or from env
 | `OPENSEARCH_USERNAME` / `OPENSEARCH_PASSWORD` | none | For a secured OpenSearch cluster. |
 | `OPENSEARCH_INDEX_PREFIX` | empty | Prefix for index names, to keep several instances in one cluster apart. |
 | `KB_BACKUP_DIR` | `./backups` | Folder for OpenSearch snapshots, read by `docker-compose.yml`. |
+| `SESSION_SUMMARY_DIR` | `./session-summaries` | Folder of Summary Files and `projects.yaml`, mounted into the app by `docker-compose.yml`. Point it at a synced notes folder; after changing it run `docker compose up -d`. |
 
 Fixed tunables (timeouts, search weights, length limits) are constants in [kb/config.py](kb/config.py).
 
@@ -205,6 +219,7 @@ This is a single-user app meant to run on your own machine.
 - `docker-compose.yml` publishes the app (port 8000) and OpenSearch (port 9201) on `127.0.0.1` only. If you expose the app beyond localhost, put it behind HTTPS (a reverse proxy or a tunnel) and use a strong `API_TOKEN`.
 - OpenSearch runs **with its security plugin disabled**. Never publish port 9201 to a network.
 - Captured page content and your Thoughts are sent to the configured LLM provider. Notes are never sent.
+- A Session Summary is embedded through the embedding provider. The app never reads an agent's transcript.
 
 
 ### Design documents

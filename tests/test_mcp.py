@@ -80,10 +80,45 @@ async def error(client, tool, **arguments) -> str:
     return result.content[0].text
 
 
-async def test_lists_the_four_tools(connect):
+class TestSaveSessionSummary:
+    SESSION = {"agent": "codex", "session_id": "0a0a", "folder": "/home/owner/project", "model": "gpt-5.6-sol"}
+    SUMMARY = {
+        "title": "Fix the index",
+        "status": "done",
+        "goal": "Find Threads.",
+        "decisions": [{"decision": "Pin 3.9.0", "reason": "3.4 closes readers", "rejected": "Keep 3.4"}],
+        "keywords": ["already_closed_exception"],
+    }
+
+    async def test_the_owners_answer_then_the_summary_is_saved_and_embedded(self, storage, llm, background, tmp_path):
+        pipeline = Pipeline(storage, llm)
+        server = mcp_server(lambda: pipeline, background, tmp_path)
+        async with create_connected_server_and_client_session(server) as client:
+            refused = await error(client, "save_session_summary", session=self.SESSION, summary=self.SUMMARY)
+            assert "/home/owner/project has no Project" in refused
+
+            saved = await call(
+                client, "save_session_summary", session=self.SESSION, summary=self.SUMMARY, project="project/kb"
+            )
+        await background.wait()
+
+        item = storage.get_item(saved["item_id"])
+        assert (item.media_type, item.title, item.tags) == (Kind.SESSION, "Fix the index", ["project/kb"])
+        assert item.embedding is not None
+        assert llm.calls == []  # embedded only
+        written = next(tmp_path.glob("*.md")).read_text(encoding="utf-8")
+        assert "model: gpt-5.6-sol" in written and "  - Rejected: Keep 3.4" in written
+
+    async def test_it_needs_the_folder_on_the_server(self, connect):
+        async with connect() as client:
+            refused = await error(client, "save_session_summary", session=self.SESSION, summary=self.SUMMARY)
+        assert "SESSION_SUMMARY_DIR" in refused
+
+
+async def test_lists_the_tools(connect):
     async with connect() as client:
         tools = {t.name for t in (await client.list_tools()).tools}
-    assert tools == {"search", "write_thought", "tag_item", "list_tags"}
+    assert tools == {"search", "write_thought", "save_session_summary", "tag_item", "list_tags"}
 
 
 class TestSearch:
@@ -232,7 +267,13 @@ class TestHttp:
     def test_mounted_behind_the_bearer_token(self, client):
         r = client.post("/mcp", json=self.LIST, headers=self.HEADERS | {"Authorization": "Bearer secret"})
         assert r.status_code == 200
-        assert {t["name"] for t in r.json()["result"]["tools"]} == {"search", "write_thought", "tag_item", "list_tags"}
+        assert {t["name"] for t in r.json()["result"]["tools"]} == {
+            "search",
+            "write_thought",
+            "save_session_summary",
+            "tag_item",
+            "list_tags",
+        }
 
     @pytest.mark.parametrize("auth", [{}, {"Authorization": "Bearer wrong"}, {"Authorization": "Basic secret"}])
     def test_rejects_a_missing_or_wrong_token(self, client, auth):

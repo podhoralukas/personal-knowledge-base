@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/
 lib64/
 parts/
 sdist/
@@ -227,3 +227,6 @@ docs/plan.md
 
 # OpenSearch snapshots (default KB_BACKUP_DIR)
 backups/
+
+# Summary Files (default SESSION_SUMMARY_DIR)
+session-summaries/

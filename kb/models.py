@@ -25,7 +25,7 @@ class Channel(StrEnum):
     RETAG = "retag"
     WRITTEN = "written"
     MCP = "mcp"  # a Thought written by an agent for the Owner
-    SESSION = "session"  # a Session Summary imported from its Summary File
+    SESSION = "session"  # a Session Summary sent by an agent, or imported from its Summary File
 
 
 class Kind(StrEnum):
@@ -60,7 +60,7 @@ class CaptureRequest(BaseModel):
         if channel in (Channel.WRITTEN, Channel.MCP):
             raise ValueError("Thoughts are written, not captured")
         if channel is Channel.SESSION:
-            raise ValueError("Session Summaries are imported, not captured")
+            raise ValueError("Session Summaries are saved by an agent, not captured")
         return channel
 
 
@@ -161,42 +161,21 @@ def _section(heading: str, lines: list[str]) -> str:
 
 
 class SessionMeta(BaseModel):
-    """What code reads from the Transcript (D43); the agent never writes these."""
+    """Where a Session ran and how to get back to it, as the agent reports it (D56)."""
 
     agent: Agent
     session_id: str = Field(min_length=1)
-    client: str = ""  # the agent's own name for where it ran, e.g. Claude Code's entrypoint
-    folder: str = ""
+    folder: str = Field(min_length=1)
     branch: str = ""
     repo_url: str = ""
+    model: str = ""
     transcript_path: str = ""
-    started_at: datetime | None = None
-    ended_at: datetime | None = None
-
-
-class ModelUsage(BaseModel):
-    """Tokens one model used in a Session. Input excludes cache reads; thinking is part of the output."""
-
-    model: str
-    input_tokens: int = 0
-    output_tokens: int = 0
-    thinking_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_write_tokens: int = 0
-
-
-class SessionUsage(BaseModel):
-    models: list[ModelUsage] = Field(default_factory=list)
-    owner_turns: int = 0
-    tool_calls: int = 0
-    cost_usd: float | None = None  # only where the agent reports it; no price table of our own
 
 
 class SessionRecord(BaseModel):
-    """A Session Summary as its Version keeps it, read-only (D42, D43)."""
+    """A Session Summary as its Version keeps it, read-only (D42, D56)."""
 
     meta: SessionMeta
-    usage: SessionUsage = Field(default_factory=SessionUsage)
     summary: SessionSummary
     # Written later from the Transcript, by an agent that was not in the Session.
     after_the_fact: bool = False

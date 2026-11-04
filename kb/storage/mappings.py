@@ -36,30 +36,11 @@ _SESSION = {
             "properties": {
                 "agent": {"type": "keyword"},
                 "session_id": {"type": "keyword"},
-                "client": {"type": "keyword"},
                 "folder": {"type": "keyword"},
                 "branch": {"type": "keyword"},
                 "repo_url": {"type": "keyword"},
+                "model": {"type": "keyword"},
                 "transcript_path": {"type": "keyword"},
-                "started_at": {"type": "date"},
-                "ended_at": {"type": "date"},
-            }
-        },
-        "usage": {
-            "properties": {
-                "models": {
-                    "properties": {
-                        "model": {"type": "keyword"},
-                        "input_tokens": {"type": "long"},
-                        "output_tokens": {"type": "long"},
-                        "thinking_tokens": {"type": "long"},
-                        "cache_read_tokens": {"type": "long"},
-                        "cache_write_tokens": {"type": "long"},
-                    }
-                },
-                "owner_turns": {"type": "integer"},
-                "tool_calls": {"type": "integer"},
-                "cost_usd": {"type": "double"},
             }
         },
         "after_the_fact": {"type": "boolean"},

@@ -6,6 +6,7 @@
 **/__pycache__
 *.egg-info
 backups
+session-summaries
 docs
 extension
 web

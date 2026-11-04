@@ -135,6 +135,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Sessions
+         * @description Rebuild from the folder: store every Summary File the knowledge base does not have, and embed again a
+         *     Version whose embedding failed. Running it again changes nothing.
+         */
+        post: operations["import_sessions_sessions_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search": {
         parameters: {
             query?: never;
@@ -545,6 +566,13 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImportFailure */
+        ImportFailure: {
+            /** File */
+            file: string;
+            /** Reason */
+            reason: string;
+        };
         /**
          * ItemView
          * @description An Item as API clients see it: everything but the embedding, which only search uses.
@@ -647,39 +675,6 @@ export interface components {
             /** Score */
             score: number;
         };
-        /**
-         * ModelUsage
-         * @description Tokens one model used in a Session.
-         */
-        ModelUsage: {
-            /** Model */
-            model: string;
-            /**
-             * Input Tokens
-             * @default 0
-             */
-            input_tokens: number;
-            /**
-             * Output Tokens
-             * @default 0
-             */
-            output_tokens: number;
-            /**
-             * Thinking Tokens
-             * @default 0
-             */
-            thinking_tokens: number;
-            /**
-             * Cache Read Tokens
-             * @default 0
-             */
-            cache_read_tokens: number;
-            /**
-             * Cache Write Tokens
-             * @default 0
-             */
-            cache_write_tokens: number;
-        };
         /** NewTag */
         NewTag: {
             /** Path */
@@ -731,21 +726,13 @@ export interface components {
         };
         /**
          * SessionMeta
-         * @description What code reads from the Transcript (D43); the agent never writes these.
+         * @description Where a Session ran and how to get back to it, as the agent reports it (D56).
          */
         SessionMeta: {
             agent: components["schemas"]["Agent"];
             /** Session Id */
             session_id: string;
-            /**
-             * Client
-             * @default
-             */
-            client: string;
-            /**
-             * Folder
-             * @default
-             */
+            /** Folder */
             folder: string;
             /**
              * Branch
@@ -758,22 +745,22 @@ export interface components {
              */
             repo_url: string;
             /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
              * Transcript Path
              * @default
              */
             transcript_path: string;
-            /** Started At */
-            started_at?: string | null;
-            /** Ended At */
-            ended_at?: string | null;
         };
         /**
          * SessionRecord
-         * @description A Session Summary as its Version keeps it, read-only (D42, D43).
+         * @description A Session Summary as its Version keeps it, read-only (D42, D56).
          */
         SessionRecord: {
             meta: components["schemas"]["SessionMeta"];
-            usage?: components["schemas"]["SessionUsage"];
             summary: components["schemas"]["SessionSummary"];
             /**
              * After The Fact
@@ -817,22 +804,20 @@ export interface components {
             /** Keywords */
             keywords?: string[];
         };
-        /** SessionUsage */
-        SessionUsage: {
-            /** Models */
-            models?: components["schemas"]["ModelUsage"][];
+        /** SessionsImported */
+        SessionsImported: {
             /**
-             * Owner Turns
-             * @default 0
+             * Files
+             * @description Summary Files imported, or already in the knowledge base
              */
-            owner_turns: number;
+            files: number;
             /**
-             * Tool Calls
-             * @default 0
+             * Embedding
+             * @description Of those, being embedded now
              */
-            tool_calls: number;
-            /** Cost Usd */
-            cost_usd?: number | null;
+            embedding: number;
+            /** Failed */
+            failed: components["schemas"]["ImportFailure"][];
         };
         /**
          * Tag
@@ -1201,6 +1186,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_sessions_sessions_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsImported"];
                 };
             };
         };

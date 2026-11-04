@@ -62,12 +62,15 @@ class Pipeline:
 
     def session(self, record: SessionRecord, at: datetime, tags: list[str] | None = None) -> Version:
         """Store a Session Summary as a new Version of its Session's Item, shown at once; the embedding follows.
-        The same Session at the same instant returns the stored Version. `tags` (the Session's Project) become
-        owner tags, as picked tags do for a Capture."""
+        The same Session at the same instant returns the stored Version, made pending again if its embedding
+        failed. `tags` (the Session's Project) become owner tags, as picked tags do for a Capture."""
         tags = tags or []
         self._known(tags)
         iid = session_item_id(record.meta.agent, record.meta.session_id)
         existing = self.storage.get_version(version_id(iid, at))
+        if existing is not None and existing.status is VersionStatus.FAILED:
+            existing = existing.model_copy(update={"status": VersionStatus.PENDING, "error": None})
+            self.storage.put_version(existing)
         if existing is not None:
             return existing
         previous = self.storage.get_item(iid)

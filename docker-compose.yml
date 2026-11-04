@@ -49,8 +49,11 @@ services:
     env_file: .env
     environment:
       - OPENSEARCH_URL=http://opensearch:9200
+      - SESSION_SUMMARY_DIR=/session-summaries
     volumes:
       - .:/app
+      # Summary Files; point SESSION_SUMMARY_DIR at a folder that is synced off the machine.
+      - ${SESSION_SUMMARY_DIR:-./session-summaries}:/session-summaries
     ports:
       - 127.0.0.1:8000:8000
     depends_on:

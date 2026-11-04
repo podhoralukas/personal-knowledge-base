@@ -52,6 +52,7 @@ from kb.owner_tags import allow_tag, tag_item, untag_item
 from kb.pipeline.fetch import FetchError
 from kb.pipeline.run import Pipeline
 from kb.search import SearchResults, search
+from kb.sessions import import_folder
 from kb.storage import TagExists
 from kb.storage.opensearch import OpenSearchStorage
 from kb.taxonomy import TagNotFound, add_tag, deletable_tags, delete_tag, describe_tag, rename_tag, retag_targets
@@ -91,6 +92,17 @@ class OwnerTag(BaseModel):
 
 class Note(BaseModel):
     notes: str = Field(max_length=NOTE_MAX_CHARS)
+
+
+class ImportFailure(BaseModel):
+    file: str
+    reason: str
+
+
+class SessionsImported(BaseModel):
+    files: int = Field(description="Summary Files imported, or already in the knowledge base")
+    embedding: int = Field(description="Of those, being embedded now")
+    failed: list[ImportFailure]
 
 
 class RetagAccepted(BaseModel):
@@ -135,7 +147,7 @@ class WebApp(StaticFiles):
 def create_app(settings: Settings | None = None, pipeline: Pipeline | None = None) -> FastAPI:
     """`pipeline` is injected by tests; in production it is built from settings on startup."""
     settings = settings or get_settings()
-    agents = mcp_server(lambda: app.state.pipeline, Background())
+    agents = mcp_server(lambda: app.state.pipeline, Background(), settings.session_summary_dir)
     mcp_endpoint = agents.streamable_http_app().routes[0].endpoint
 
     @asynccontextmanager
@@ -269,6 +281,22 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
             return enriching(pipe.retry(item_id), background, pipe)
         except ValueError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+
+    @app.post("/sessions/import", status_code=status.HTTP_202_ACCEPTED, response_model=SessionsImported)
+    def import_sessions(background: BackgroundTasks, pipe: Pipe, _: Auth) -> SessionsImported:
+        """Rebuild from the folder: store every Summary File the knowledge base does not have, and embed again a
+        Version whose embedding failed. Running it again changes nothing."""
+        if settings.session_summary_dir is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "SESSION_SUMMARY_DIR is not set")
+        versions, failed = import_folder(pipe, settings.session_summary_dir)
+        pending = [v for v in versions if v.status is VersionStatus.PENDING]
+        for version in pending:
+            background.add_task(pipe.enrich, version)
+        return SessionsImported(
+            files=len(versions),
+            embedding=len(pending),
+            failed=[ImportFailure(file=file, reason=reason) for file, reason in failed],
+        )
 
     @app.get("/search", response_model=SearchResults)
     async def search_items(

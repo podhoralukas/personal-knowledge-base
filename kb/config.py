@@ -122,6 +122,9 @@ class Settings(BaseSettings):
     )
     embedding_model: str = "text-embedding-3-small"
 
+    # The folder of Summary Files as the app sees it; docker-compose.yml mounts the host's folder there.
+    session_summary_dir: Path | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
