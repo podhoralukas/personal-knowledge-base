@@ -1,4 +1,6 @@
-/** A row of buttons of which one is pressed, or none when `value` matches no option. */
+import { cn } from "@/lib/utils";
+
+/** A row of buttons of which one is pressed, or none when `value` matches no option. Four make two rows. */
 export function Segmented<T extends string>({
   label,
   options,
@@ -11,7 +13,7 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className="grid grid-cols-3 gap-0.5 rounded-md bg-muted p-[3px]">
+    <div role="group" aria-label={label} className={cn("grid gap-0.5 rounded-md bg-muted p-[3px]", options.length === 4 ? "grid-cols-2" : "grid-cols-3")}>
       {options.map((option) => (
         <button
           key={option.value}

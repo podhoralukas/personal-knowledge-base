@@ -79,21 +79,23 @@ def _check_new_path(taxonomy: Taxonomy, path: str) -> None:
 
 
 def retag_targets(storage: Storage, every_item: bool = False) -> list[str]:
-    """Item ids a re-tag should reach: by default only those a newly added Tag could change."""
+    """Item ids a re-tag should reach: by default only those a newly added Tag could change; never a Session."""
     if every_item:
-        return storage.list_item_ids()
+        return storage.list_item_ids(exclude=Kind.SESSION)
     taxonomy = storage.get_taxonomy()
     return retag_candidates(storage.list_items_tagged_before(taxonomy.version), taxonomy)
 
 
 def retag_candidates(items: list[Item], taxonomy: Taxonomy) -> list[str]:
-    """Untagged Items, and Items tagged with an ancestor of a Tag added since they were tagged. Sessions are
-    never tagged by the pipeline, so they are never candidates."""
+    """Untagged Items, and Items tagged with an ancestor of a Tag added since they were tagged. The pipeline never
+    tags Sessions and never offers Projects, so a Session is no candidate and a new Project makes none."""
     ids = []
     for item in items:
         if item.media_type is Kind.SESSION:
             continue
-        added = [t.path for t in taxonomy.tags if t.created_in_taxonomy_version > item.taxonomy_version]
+        added = [
+            t.path for t in taxonomy.tags if not t.is_project and t.created_in_taxonomy_version > item.taxonomy_version
+        ]
         if added and (not item.tags or any(a.startswith(f"{t}/") for t in item.tags for a in added)):
             ids.append(item.id)
     return ids

@@ -163,7 +163,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search Items */
+        /**
+         * Search Items
+         * @description Best match first. `section` looks only in that section of Session Summaries, by keywords alone.
+         */
         get: operations["search_items_search_get"];
         put?: never;
         post?: never;
@@ -679,6 +682,8 @@ export interface components {
             annotations?: components["schemas"]["Annotations"];
             /** Score */
             score: number;
+            /** Matched */
+            matched?: string[];
         };
         /** NewTag */
         NewTag: {
@@ -747,7 +752,7 @@ export interface components {
             session_id: string;
             /**
              * Folder
-             * @description Where the Session worked: the repository's root if it is in one
+             * @description The folder the Session was started in, where it can be resumed
              */
             folder: string;
             /**
@@ -788,6 +793,12 @@ export interface components {
              */
             after_the_fact: boolean;
         };
+        /**
+         * SessionSection
+         * @description The sections of a Session Summary that search can look in on their own (D45).
+         * @enum {string}
+         */
+        SessionSection: "decisions" | "problems";
         /**
          * SessionStatus
          * @enum {string}
@@ -926,6 +937,11 @@ export interface components {
              * @description Items a re-tag without `all` reaches (POST /taxonomy/retag)
              */
             retag_candidates: number;
+            /**
+             * Retag All
+             * @description Items a re-tag with `all` reaches: every one but the Sessions
+             */
+            retag_all: number;
         };
         /**
          * ThoughtEdit
@@ -1260,6 +1276,7 @@ export interface operations {
                 q: string;
                 tag?: string | null;
                 kind?: components["schemas"]["Kind"] | null;
+                section?: components["schemas"]["SessionSection"] | null;
                 /** @description Saved on or after (UTC day) */
                 from?: string | null;
                 /** @description Saved on or before (UTC day) */

@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 
 from kb.app import create_app
 from kb.config import Settings
 from kb.llm.fake import FakeLLM
+from kb.models import Agent, Decision, SessionMeta, SessionRecord, SessionStatus, SessionSummary
 from kb.pipeline.run import Pipeline
 from kb.pipeline.summarise import Summary
 from kb.pipeline.tag import Tagging
@@ -102,6 +105,26 @@ def test_search_returns_items_and_needs_a_token(client):
     assert "embedding" not in body["items"][0]
     assert client.get("/search", params={"q": "x"}).status_code == 401
     assert client.get("/search", params={"q": ""}, headers=AUTH).status_code == 422
+
+
+def test_search_in_a_section_is_by_keywords_with_no_embedding_call(client, llm, storage):
+    pipeline = Pipeline(storage, llm)
+    meta = SessionMeta(agent=Agent.CODEX, session_id="s1", folder="/work")
+    decided = SessionSummary(
+        title="Pinning", status=SessionStatus.DONE, decisions=[Decision(decision="Pin zebra", reason="stable")]
+    )
+    item_id = pipeline.session(SessionRecord(meta=meta, summary=decided), datetime(2026, 11, 4, tzinfo=UTC)).item_id
+    llm.embedded.clear()
+
+    params = {"q": "zebra", "section": "decisions"}
+    body = client.get("/search", params=params, headers=AUTH).json()
+
+    assert (body["semantic"], [i["id"] for i in body["items"]]) == (False, [item_id])
+    assert body["items"][0]["matched"] == ["Pin zebra Reason: stable"]
+    assert "decisions" not in body["items"][0]
+    assert llm.embedded == []
+    assert client.get("/search", params={**params, "section": "problems"}, headers=AUTH).json()["items"] == []
+    assert client.get("/search", params={**params, "section": "goal"}, headers=AUTH).status_code == 422
 
 
 def test_search_by_saved_date(client):
@@ -416,6 +439,7 @@ def test_taxonomy_stats(client, llm):
         "counts": {"ai": 1, "ai/rag": 1, "cooking": 0},
         "deletable": ["cooking"],
         "retag_candidates": 0,
+        "retag_all": 2,
     }
     client.post("/taxonomy/tags", json={"path": "news"}, headers=AUTH)
     # The untagged Item could get the new Tag; the one tagged ai/rag has no parent of it.

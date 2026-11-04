@@ -98,7 +98,7 @@ class Pipeline:
         return version
 
     def retry(self, item_id: str) -> Version | None:
-        """Make a Thought's failed current Version pending again; None for an unknown Item."""
+        """Make a Thought's or a Session's failed current Version pending again; None for an unknown Item."""
         item = self.storage.get_item(item_id)
         if item is None:
             return None
@@ -235,8 +235,8 @@ class Pipeline:
     async def _tagged(
         self, version: Version, enrichment: Enrichment, taxonomy: Taxonomy, rejected: list[str]
     ) -> Enrichment:
-        """Tags chosen from scratch; the LLM is not offered the Item's rejected Tags."""
-        offered = Taxonomy(tags=[t for t in taxonomy.tags if t.path not in rejected])
+        """Tags chosen from scratch; the LLM is not offered the Item's rejected Tags, or any Project (D44)."""
+        offered = Taxonomy(tags=[t for t in taxonomy.tags if not t.is_project and t.path not in rejected])
         tags = await tag(self.llm, offered, *version.pipeline_input(enrichment))
         return enrichment.model_copy(
             update={

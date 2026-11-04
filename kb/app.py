@@ -40,6 +40,7 @@ from kb.models import (
     Item,
     ItemView,
     Kind,
+    SessionSection,
     Tag,
     Taxonomy,
     ThoughtEdit,
@@ -116,6 +117,7 @@ class TaxonomyStats(BaseModel):
     counts: dict[str, int] = Field(description="Items under each Tag, sub-tags included")
     deletable: list[str] = Field(description="Tags nothing uses and without sub-tags")
     retag_candidates: int = Field(description="Items a re-tag without `all` reaches (POST /taxonomy/retag)")
+    retag_all: int = Field(description="Items a re-tag with `all` reaches: every one but the Sessions")
 
 
 def web_app_built() -> bool:
@@ -306,8 +308,10 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         saved: Saved,
         tag: str | None = None,
         kind: Kind | None = None,
+        section: SessionSection | None = None,
     ) -> SearchResults:
-        return await search(pipe.storage, pipe.llm, q, tag, saved, kind)
+        """Best match first. `section` looks only in that section of Session Summaries, by keywords alone."""
+        return await search(pipe.storage, pipe.llm, q, tag, saved, kind, section)
 
     @app.get("/items", response_model=list[ItemView])
     def list_items(pipe: Pipe, _: Auth, saved: Saved, tag: str | None = None, kind: Kind | None = None) -> list[Item]:
@@ -403,6 +407,7 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
             counts=pipe.storage.count_items(tags),
             deletable=sorted(deletable_tags(pipe.storage)),
             retag_candidates=len(retag_targets(pipe.storage)),
+            retag_all=len(retag_targets(pipe.storage, every_item=True)),
         )
 
     @app.post("/taxonomy/tags", status_code=status.HTTP_201_CREATED, response_model=Tag)

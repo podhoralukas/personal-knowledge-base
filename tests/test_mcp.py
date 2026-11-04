@@ -144,6 +144,7 @@ class TestSearch:
             "summary": "All about Hamilton apologises.",
             "key_points": ["one point"],
             "text": "",
+            "matched": [],
         }
         assert first["score"] > found["items"][-1]["score"]
 
@@ -159,6 +160,22 @@ class TestSearch:
 
         assert [i["item_id"] for i in found["items"]] == [f1.id]
         assert thoughts["items"] == []
+
+    async def test_looks_in_a_section_of_session_summaries(self, storage, llm, background, tmp_path):
+        pipeline = Pipeline(storage, llm)
+        summary = TestSaveSessionSummary.SUMMARY
+        server = mcp_server(lambda: pipeline, background, tmp_path)
+        async with create_connected_server_and_client_session(server) as client:
+            await call(
+                client, "save_session_summary", session=TestSaveSessionSummary.SESSION, summary=summary, project="none"
+            )
+            await background.wait()
+            found = await call(client, "search", query="closes", section="decisions")
+            problems = await call(client, "search", query="closes", section="problems")
+
+        assert found["semantic"] is False
+        assert found["items"][0]["matched"] == ["Pin 3.9.0 Reason: 3.4 closes readers Rejected: Keep 3.4"]
+        assert problems["items"] == []
 
     async def test_unknown_tag_points_to_list_tags(self, connect):
         async with connect() as client:

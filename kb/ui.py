@@ -192,7 +192,7 @@ def ui_router(settings: Settings) -> APIRouter:
             deletable=deletable_tags(pipe.storage),
             untagged=len(pipe.storage.list_untagged_items()),
             candidates=len(retag_targets(pipe.storage)),
-            total=len(pipe.storage.list_item_ids()),
+            total=len(retag_targets(pipe.storage, every_item=True)),
             **{"done": {}, **context},
         )
 

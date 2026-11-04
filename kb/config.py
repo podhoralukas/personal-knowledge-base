@@ -59,6 +59,7 @@ THOUGHT_PIPELINE_MAX_CHARS = 8_000
 SESSION_ID_PREFIX = "session:"
 SESSION_TITLE_MAX_CHARS = 200
 SESSION_PIPELINE_MAX_CHARS = 8_000
+PROJECT_TAG = "project"  # Projects are the Tags under it; the Owner picks them, the tagger never does
 
 # Listings that return whole Items
 LIST_MAX_ITEMS = 1000

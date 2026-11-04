@@ -18,6 +18,7 @@ from kb.models import (
     Kind,
     SessionMeta,
     SessionRecord,
+    SessionSection,
     SessionStatus,
     SessionSummary,
     Tag,
@@ -294,6 +295,66 @@ def test_keyword_search_matches_the_note(storage, corpus):
     _, _, soup = corpus
     storage.put_item(soup.model_copy(update={"annotations": Annotations(notes="grandma zebra recipe")}))
     assert [i.id for i in storage.search("zebra", None)] == [soup.id]
+
+
+def session(name: str, decisions: list[str], problems: list[str], embedding: list[float], tags=()) -> Item:
+    return Item(
+        id=f"session-{name}",
+        media_type=Kind.SESSION,
+        first_captured_at=T1,
+        captured_at=T1,
+        current_version_id=f"session-{name}-v1",
+        title=name,
+        text=" ".join([*decisions, *problems]),
+        decisions=decisions,
+        problems=problems,
+        tags=list(tags),
+        embedding=embedding,
+    )
+
+
+@pytest.fixture
+def sessions(storage):
+    pinned = session("pinned", ["Pin zebra 3.9 Reason: fixes readers", "Drop usage"], ["Timeout on upload"], axis(0))
+    broken = session("broken", ["Keep the file"], ["zebra crashes on start Fix: restart"], axis(1))
+    for s in (pinned, broken):
+        storage.put_item(s)
+    return pinned, broken
+
+
+def test_search_in_a_section_looks_only_there(storage, sessions):
+    pinned, broken = sessions
+    decisions = storage.search("zebra", None, section=SessionSection.DECISIONS)
+    problems = storage.search("zebra", None, section=SessionSection.PROBLEMS)
+    assert [(m.id, m.matched) for m in decisions] == [(pinned.id, ["Pin zebra 3.9 Reason: fixes readers"])]
+    assert [(m.id, m.matched) for m in problems] == [(broken.id, ["zebra crashes on start Fix: restart"])]
+
+
+def test_any_search_names_the_decisions_and_problems_that_matched(storage, sessions):
+    pinned, broken = sessions
+    found = {m.id: m.matched for m in storage.search("zebra upload", axis(0))}
+    assert found[pinned.id] == ["Pin zebra 3.9 Reason: fixes readers", "Timeout on upload"]
+    assert found[broken.id] == ["zebra crashes on start Fix: restart"]
+
+
+def test_an_article_matches_no_lines_and_no_section(storage, corpus):
+    assert storage.search("navier", None)[0].matched == []
+    assert storage.search("navier", None, section=SessionSection.DECISIONS) == []
+
+
+def test_untagged_leaves_sessions_out_unless_asked_for(storage, sessions):
+    pinned, broken = sessions
+    article = item("https://example.com/a", T1, [])
+    storage.put_item(article)
+    assert [i.id for i in storage.list_untagged_items()] == [article.id]
+    assert {i.id for i in storage.list_untagged_items(kind=Kind.SESSION)} == {pinned.id, broken.id}
+
+
+def test_list_item_ids_can_leave_out_a_kind(storage, sessions):
+    article = item("https://example.com/a", T1, [])
+    storage.put_item(article)
+    assert storage.list_item_ids(exclude=Kind.SESSION) == [article.id]
+    assert len(storage.list_item_ids()) == 3
 
 
 def test_version_keeps_its_note(storage):

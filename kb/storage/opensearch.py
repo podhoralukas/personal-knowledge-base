@@ -13,7 +13,7 @@ from kb.config import (
     TAXONOMY_META_ID,
     Settings,
 )
-from kb.models import DateRange, Item, Kind, Match, Tag, Taxonomy, Version
+from kb.models import DateRange, Item, Kind, Match, SessionSection, Tag, Taxonomy, Version
 from kb.storage import TagExists, mappings
 
 ITEM_TAG_FIELDS = ("tags", "annotations.owner_tags", "annotations.rejected_tags")
@@ -119,8 +119,9 @@ class OpenSearchStorage:
             return versions["deleted"] > 0
         return True
 
-    def list_item_ids(self) -> list[str]:
-        hits = scan(self.client, index=self.items_index, query={"query": {"match_all": {}}, "_source": False})
+    def list_item_ids(self, exclude: Kind | None = None) -> list[str]:
+        query = {"bool": {"must_not": {"term": {"media_type": exclude.value}}}} if exclude else {"match_all": {}}
+        hits = scan(self.client, index=self.items_index, query={"query": query, "_source": False})
         return [h["_id"] for h in hits]
 
     def list_items_tagged_before(self, taxonomy_version: int) -> list[Item]:
@@ -142,19 +143,35 @@ class OpenSearchStorage:
         tag: str | None = None,
         saved: DateRange | None = None,
         kind: Kind | None = None,
+        section: SessionSection | None = None,
     ) -> list[Match]:
-        keyword = {"multi_match": {"query": text, "fields": SEARCH_FIELDS}}
+        keyword = {"multi_match": {"query": text, "fields": [section.value] if section else SEARCH_FIELDS}}
         knn = {"vector": vector, "k": SEARCH_KNN_K}
         narrowed = filters(tag, saved, kind)
         if narrowed != {"match_all": {}}:
             keyword = {"bool": {"must": keyword, "filter": narrowed}}
             knn["filter"] = narrowed
         query = keyword if vector is None else {"hybrid": {"queries": [keyword, {"knn": {"embedding": knn}}]}}
-        body = {"query": query, "size": SEARCH_RESULTS, "_source": {"excludes": ["embedding"]}}
+        sections = [section.value] if section else [s.value for s in SessionSection]
+        body = {
+            "query": query,
+            "size": SEARCH_RESULTS,
+            "_source": {"excludes": ["embedding"]},
+            "highlight": matched_lines(text, sections),
+        }
         response = self.client.search(
             index=self.items_index, body=body, params={"search_pipeline": self.search_pipeline}
         )
-        return [Match.model_validate(h["_source"] | {"score": h["_score"]}) for h in response["hits"]["hits"]]
+        return [
+            Match.model_validate(
+                h["_source"]
+                | {
+                    "score": h["_score"],
+                    "matched": [line for s in sections for line in h.get("highlight", {}).get(s, [])],
+                }
+            )
+            for h in response["hits"]["hits"]
+        ]
 
     def count_items(self, tags: list[str]) -> dict[str, int]:
         if not tags:
@@ -244,6 +261,18 @@ class OpenSearchStorage:
         return model.model_validate(doc["_source"])
 
 
+def matched_lines(text: str, sections: list[str]) -> dict:
+    """Highlighting that returns each matching line of `sections` whole and unmarked. It has its own query, so lines
+    come back whichever part of the search found the Item."""
+    return {
+        "pre_tags": [""],
+        "post_tags": [""],
+        "number_of_fragments": 0,
+        "highlight_query": {"multi_match": {"query": text, "fields": sections}},
+        "fields": {s: {} for s in sections},
+    }
+
+
 def filters(tag: str | None, saved: DateRange | None, kind: Kind | None = None, untagged: bool = False) -> dict:
     """One query for the tag subtree, the saved-date range, the Kind and/or untagged Items; match_all without any."""
     clauses = []
@@ -258,7 +287,9 @@ def filters(tag: str | None, saved: DateRange | None, kind: Kind | None = None, 
         return {"match_all": {}}
     query = {"bool": {"filter": clauses}}
     if untagged:
-        query["bool"]["must_not"] = {"exists": {"field": "tags"}}
+        query["bool"]["must_not"] = [{"exists": {"field": "tags"}}]
+        if kind is None:
+            query["bool"]["must_not"].append({"term": {"media_type": Kind.SESSION.value}})
     return query
 
 

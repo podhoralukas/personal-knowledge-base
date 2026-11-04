@@ -5,7 +5,7 @@ import re
 from collections.abc import Iterable
 
 from kb.config import LIST_MAX_ITEMS, SEARCH_KEYWORD_WEIGHT, SEARCH_KNN_K, SEARCH_RESULTS, SEARCH_VECTOR_WEIGHT
-from kb.models import DateRange, Item, Kind, Match, Tag, Taxonomy, Version
+from kb.models import DateRange, Item, Kind, Match, SessionSection, Tag, Taxonomy, Version
 from kb.storage import TagExists
 
 
@@ -44,8 +44,8 @@ class MemoryStorage:
             del self.versions[version_id]
         return self.items.pop(item_id, None) is not None or bool(version_ids)
 
-    def list_item_ids(self) -> list[str]:
-        return list(self.items)
+    def list_item_ids(self, exclude: Kind | None = None) -> list[str]:
+        return [i.id for i in self.items.values() if i.media_type is not exclude]
 
     def list_items_tagged_before(self, taxonomy_version: int) -> list[Item]:
         older = (i for i in self.items.values() if i.taxonomy_version < taxonomy_version)
@@ -60,7 +60,8 @@ class MemoryStorage:
         return {t: sum(has_tag(i, t) for i in self.items.values()) for t in tags}
 
     def list_untagged_items(self, saved: DateRange | None = None, kind: Kind | None = None) -> list[Item]:
-        return self._newest_first(i for i in self._filtered(saved, kind) if not i.tags)
+        wanted = (i for i in self._filtered(saved, kind) if kind is not None or i.media_type is not Kind.SESSION)
+        return self._newest_first(i for i in wanted if not i.tags)
 
     def search(
         self,
@@ -69,10 +70,11 @@ class MemoryStorage:
         tag: str | None = None,
         saved: DateRange | None = None,
         kind: Kind | None = None,
+        section: SessionSection | None = None,
     ) -> list[Match]:
         """Term overlap stands in for BM25; scores are combined the way the OpenSearch pipeline does it."""
         candidates = [i for i in self._filtered(saved, kind) if tag is None or has_tag(i, tag)]
-        keyword = {i.id: s for i in candidates if (s := term_score(text, i)) > 0}
+        keyword = {i.id: s for i in candidates if (s := term_score(text, i, section)) > 0}
         semantic = {}
         if vector is not None:
             nearest = sorted(
@@ -85,7 +87,14 @@ class MemoryStorage:
             iid: weights[0] * keyword.get(iid, 0) + weights[1] * semantic.get(iid, 0) for iid in keyword | semantic
         }
         ranked = sorted(combined, key=lambda iid: -combined[iid])[:SEARCH_RESULTS]
-        return [Match(**self.items[iid].model_dump(exclude={"embedding"}), score=combined[iid]) for iid in ranked]
+        return [
+            Match(
+                **self.items[iid].model_dump(exclude={"embedding"}),
+                score=combined[iid],
+                matched=matched_lines(text, self.items[iid], section),
+            )
+            for iid in ranked
+        ]
 
     def _filtered(self, saved: DateRange | None, kind: Kind | None) -> list[Item]:
         return [
@@ -156,8 +165,11 @@ def has_tag(item: Item, tag: str) -> bool:
     return any(t == tag or t.startswith(f"{tag}/") for t in item.tags)
 
 
-def term_score(text: str, item: Item) -> float:
-    terms = set(re.findall(r"\w+", text.lower()))
+def words(text: str) -> set[str]:
+    return set(re.findall(r"\w+", text.lower()))
+
+
+def term_score(text: str, item: Item, section: SessionSection | None = None) -> float:
     fields = (
         (item.title, 2.0),
         (item.summary, 1.0),
@@ -165,7 +177,14 @@ def term_score(text: str, item: Item) -> float:
         (item.text or "", 1.0),
         (item.annotations.notes, 1.0),
     )
-    return sum(weight * len(terms & set(re.findall(r"\w+", field.lower()))) for field, weight in fields)
+    if section is not None:
+        fields = ((" ".join(getattr(item, section.value)), 1.0),)
+    return sum(weight * len(words(text) & words(field)) for field, weight in fields)
+
+
+def matched_lines(text: str, item: Item, section: SessionSection | None) -> list[str]:
+    sections = [section] if section else list(SessionSection)
+    return [line for s in sections for line in getattr(item, s.value) if words(text) & words(line)]
 
 
 def cosine(a: list[float], b: list[float]) -> float:

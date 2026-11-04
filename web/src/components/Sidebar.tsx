@@ -9,6 +9,7 @@ const KINDS: { value: Kind | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "article", label: "Articles" },
   { value: "thought", label: "Thoughts" },
+  { value: "session", label: "Sessions" },
 ];
 
 /** Kind, saved-date and Tag filters. `onTagPicked` closes the sidebar where it is a drawer. */
@@ -34,7 +35,7 @@ export function Sidebar({
           label="Kind"
           options={KINDS}
           value={filters.kind ?? "all"}
-          onChange={(kind) => onChange({ kind: kind === "all" ? undefined : kind })}
+          onChange={(kind) => onChange({ kind: kind === "all" ? undefined : kind, section: undefined })}
         />
       </section>
       <section>

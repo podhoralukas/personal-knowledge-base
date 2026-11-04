@@ -1,13 +1,20 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { SearchIcon, XIcon } from "lucide-react";
 import type { Ref } from "react";
-import type { Item } from "@/api/client";
 import type { ItemList as Listed } from "@/api/queries";
 import { day } from "@/lib/dates";
 import type { Filters } from "@/lib/filters";
 import { mostSpecific } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 import { Dot, Empty, pill, Source, TagLabel } from "./bits";
+import { Segmented } from "./Segmented";
+
+const MATCHED_SHOWN = 2;
+const SECTIONS = [
+  { value: "all", label: "All" },
+  { value: "decisions", label: "Decisions" },
+  { value: "problems", label: "Problems" },
+] as const;
 
 type Props = {
   filters: Filters;
@@ -33,7 +40,7 @@ export function ItemList({ filters, onChange, list, selected, onSelect, searchRe
             ref={searchRef}
             type="search"
             aria-label="Search items"
-            placeholder="Search by words or meaning"
+            placeholder={filters.section ? `Search ${filters.section} by words` : "Search by words or meaning"}
             autoComplete="off"
             value={filters.q}
             onChange={(event) => onChange({ q: event.target.value })}
@@ -46,6 +53,14 @@ export function ItemList({ filters, onChange, list, selected, onSelect, searchRe
             /
           </kbd>
         </div>
+        {filters.kind === "session" && (
+          <Segmented
+            label="Search in"
+            options={[...SECTIONS]}
+            value={filters.section ?? "all"}
+            onChange={(section) => onChange({ section: section === "all" ? undefined : section })}
+          />
+        )}
         <div className="flex items-center justify-between gap-2 text-[0.82rem] text-muted-foreground" aria-live="polite">
           {list.isError ? (
             <span className="text-destructive">{list.error.message}</span>
@@ -108,7 +123,7 @@ function ItemRow({
   onSelect,
   onTag,
 }: {
-  item: Item;
+  item: Listed["items"][number];
   selected: boolean;
   onSelect: (id: string) => void;
   onTag: (tag: string) => void;
@@ -159,9 +174,17 @@ function ItemRow({
           ))}
         </ul>
       )}
-      <p className="line-clamp-2 text-[0.86rem] text-muted-foreground">
-        {item.media_type === "thought" ? item.text : item.summary}
-      </p>
+      {item.matched?.length ? (
+        <ul aria-label="Matching decisions and problems" className="grid gap-1 text-[0.86rem] text-muted-foreground">
+          {item.matched.slice(0, MATCHED_SHOWN).map((line) => (
+            <li key={line} className="line-clamp-2 border-l-2 border-primary/40 pl-2">
+              {line}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="line-clamp-2 text-[0.86rem] text-muted-foreground">{item.summary || item.text}</p>
+      )}
     </li>
   );
 }

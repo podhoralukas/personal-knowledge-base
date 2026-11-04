@@ -229,3 +229,79 @@ test("a new Capture whose processing failed says so", async () => {
 
   expect(await pane().findByText("Capturing failed: no text in the page")).toBeInTheDocument();
 });
+
+const SESSION = item({
+  id: "s1",
+  media_type: "session",
+  original_url: null,
+  title: "Fix the index",
+  text: "Goal: Find Threads.",
+  current_version_id: "s1:v2",
+  tags: ["project/kb"],
+});
+const record = (meta: object = {}) => ({
+  meta: {
+    agent: "claude-code" as const,
+    session_id: "8f2c",
+    folder: "/work/my kb",
+    branch: "main",
+    repo_url: "",
+    model: "claude-opus",
+    transcript_path: "/home/o/.claude/projects/8f2c.jsonl",
+    ...meta,
+  },
+  summary: {
+    title: "Fix the index",
+    status: "done" as const,
+    goal: "Find Threads.",
+    outcome: "",
+    decisions: [{ decision: "Pin 3.9.0", reason: "3.4 closes readers", rejected: "Keep 3.4" }],
+    problems: [{ symptom: "503 already_closed", cause: "k-NN bug", fix: "pin" }],
+    keywords: ["already_closed_exception"],
+  },
+  after_the_fact: true,
+});
+const sessionVersions = (meta?: object) => [
+  version(SESSION, { id: "s1:v2", kind: "session", channel: "session", session: record(meta), captured_at: "2026-10-21T10:00:00.000Z" }),
+  version(SESSION, { id: "s1:v1", kind: "session", channel: "session", session: record(meta) }),
+];
+
+test("a Session shows its sections, where it ran and a Note, and its Versions cannot be deleted", async () => {
+  fakeApi({ items: [SESSION], versions: sessionVersions(), tags: [tag("project"), tag("project/kb")] });
+  await open("/app/?item=s1");
+  await pane().findByText("Pin 3.9.0");
+
+  expect(pane().getByText("Session")).toBeInTheDocument();
+  expect(pane().getByText("Find Threads.")).toBeInTheDocument();
+  expect(pane().getByText("3.4 closes readers")).toBeInTheDocument();
+  expect(pane().getByText("503 already_closed")).toBeInTheDocument();
+  expect(pane().getByText("written afterwards")).toBeInTheDocument();
+  expect(pane().getByText("cd '/work/my kb' && claude --resume 8f2c")).toBeInTheDocument();
+  expect(pane().getByText("/home/o/.claude/projects/8f2c.jsonl")).toBeInTheDocument();
+  expect(pane().getByRole("link", { name: "Open in VS Code ↗" })).toHaveAttribute(
+    "href",
+    "vscode://anthropic.claude-code/open?session=8f2c",
+  );
+  expect(pane().getByRole("button", { name: "Add a note" })).toBeInTheDocument();
+  expect(pane().queryByRole("button", { name: "delete" })).not.toBeInTheDocument();
+  expect(pane().getAllByRole("button", { name: "details" })).toHaveLength(2);
+});
+
+test("a Codex Session resumes with codex and has no VS Code link", async () => {
+  fakeApi({ items: [SESSION], versions: sessionVersions({ agent: "codex", folder: "/work/kb" }) });
+  await open("/app/?item=s1");
+
+  expect(await pane().findByText("cd /work/kb && codex resume 8f2c")).toBeInTheDocument();
+  expect(pane().queryByRole("link", { name: "Open in VS Code ↗" })).not.toBeInTheDocument();
+});
+
+test("a Session whose embedding failed offers a retry, and still shows its summary", async () => {
+  const [failed, older] = sessionVersions();
+  const api = fakeApi({ items: [SESSION], versions: [{ ...failed, status: "failed", error: "down" }, older] });
+  await open("/app/?item=s1");
+
+  expect(await pane().findByText(/Not embedded/)).toBeInTheDocument();
+  expect(pane().getByText("Pin 3.9.0")).toBeInTheDocument();
+  await userEvent.click(pane().getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(api.versions[0].status).toBe("pending"));
+});

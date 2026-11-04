@@ -27,23 +27,25 @@ export function TagLabel({ path }: { path: string }) {
 
 export const pill = "inline-flex items-center rounded-full bg-tag text-tag-foreground font-medium whitespace-nowrap";
 
+const KIND_LABEL = { article: "Article", thought: "Thought", session: "Session" };
+
 export function KindBadge({ item }: { item: Item }) {
-  const thought = item.media_type === "thought";
+  const kind = item.media_type ?? "article";
   return (
     <span
       className={cn(
         "rounded border px-1.5 font-mono text-[0.7rem] font-medium tracking-wide uppercase",
-        thought ? "border-primary text-primary" : "text-muted-foreground",
+        kind === "article" ? "text-muted-foreground" : "border-primary text-primary",
       )}
     >
-      {thought ? "Thought" : "Article"}
+      {KIND_LABEL[kind]}
     </span>
   );
 }
 
-/** Where an Item came from: the article's site, or the Thought badge. */
+/** Where an Item came from: the article's site, or the badge of a Thought or a Session. */
 export function Source({ item }: { item: Item }) {
-  return item.media_type === "thought" || !item.original_url ? (
+  return item.media_type !== "article" || !item.original_url ? (
     <KindBadge item={item} />
   ) : (
     <span>{domain(item.original_url)}</span>

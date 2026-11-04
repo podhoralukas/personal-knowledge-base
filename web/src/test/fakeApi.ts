@@ -46,7 +46,15 @@ export function version(of: Item, fields: Partial<Version> = {}): Version {
  * Version, as the real one does until enrichment, which a test does by hand. `retagCandidates` is what stats
  * report until a re-tag runs; Tags are checked like the real Taxonomy (lowercase path, existing parent). */
 export function fakeApi(
-  init: { items?: Item[]; tags?: Tag[]; versions?: Version[]; loggedIn?: boolean; retagCandidates?: number } = {},
+  init: {
+    items?: Item[];
+    tags?: Tag[];
+    versions?: Version[];
+    loggedIn?: boolean;
+    retagCandidates?: number;
+    /** By Item id: the lines a search says matched. */
+    matched?: Record<string, string[]>;
+  } = {},
 ) {
   const state = {
     items: structuredClone(init.items ?? []),
@@ -125,7 +133,7 @@ export function fakeApi(
       const counts = Object.fromEntries(
         state.tags.map((t) => [t.path, state.items.filter((i) => (i.tags ?? []).some((p) => under(p, t.path))).length]),
       );
-      const untagged = state.items.filter((i) => !i.tags?.length).length;
+      const untagged = state.items.filter((i) => !i.tags?.length && i.media_type !== "session").length;
       const deletable = state.tags
         .map((t) => t.path)
         .filter((path) => !counts[path] && !state.tags.some((t) => t.path.startsWith(`${path}/`)));
@@ -135,6 +143,7 @@ export function fakeApi(
         counts,
         deletable,
         retag_candidates: state.retagCandidates,
+        retag_all: state.items.filter((i) => i.media_type !== "session").length,
       });
     }),
     http.post("/taxonomy/tags", async ({ request }) => {
@@ -191,7 +200,10 @@ export function fakeApi(
       const found = listed(url, hasTag(url)).filter((i) =>
         words.some((w) => `${i.title} ${i.summary} ${i.text ?? ""}`.toLowerCase().includes(w)),
       );
-      return HttpResponse.json({ items: found.reverse().map((i) => ({ ...i, score: 1 })), semantic: true });
+      return HttpResponse.json({
+        items: found.reverse().map((i) => ({ ...i, score: 1, matched: init.matched?.[i.id] ?? [] })),
+        semantic: !url.searchParams.has("section"),
+      });
     }),
     http.get("/items/:id", ({ request, params }) => {
       if (!authed(request)) return denied();

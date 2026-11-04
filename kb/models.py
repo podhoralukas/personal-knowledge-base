@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, computed_field, field_validator, model_va
 
 from kb.config import (
     NOTE_MAX_CHARS,
+    PROJECT_TAG,
     SESSION_PIPELINE_MAX_CHARS,
     SESSION_TITLE_MAX_CHARS,
     THOUGHT_DERIVED_TITLE_CHARS,
@@ -102,6 +103,13 @@ class SessionStatus(StrEnum):
     ABANDONED = "abandoned"
 
 
+class SessionSection(StrEnum):
+    """The sections of a Session Summary that search can look in on their own (D45)."""
+
+    DECISIONS = "decisions"
+    PROBLEMS = "problems"
+
+
 class Decision(BaseModel):
     decision: str = Field(description="What was decided, naming the exact thing it applies to")
     reason: str = Field("", description="Why it was decided this way")
@@ -113,7 +121,7 @@ class Decision(BaseModel):
             f"Reason: {self.reason}" if self.reason else "",
             f"Rejected: {self.rejected}" if self.rejected else "",
         ]
-        return "- " + " ".join(p for p in parts if p)
+        return " ".join(p for p in parts if p)
 
 
 class Problem(BaseModel):
@@ -123,7 +131,7 @@ class Problem(BaseModel):
 
     def line(self) -> str:
         parts = [self.symptom, f"Cause: {self.cause}" if self.cause else "", f"Fix: {self.fix}" if self.fix else ""]
-        return "- " + " ".join(p for p in parts if p)
+        return " ".join(p for p in parts if p)
 
 
 class SessionSummary(BaseModel):
@@ -153,16 +161,16 @@ class SessionSummary(BaseModel):
             f"Outcome: {self.outcome}" if self.outcome else "",
             _section("Decisions", [d.line() for d in self.decisions]),
             _section("Problems", [p.line() for p in self.problems]),
-            _section("Dropped", [f"- {d}" for d in self.dropped]),
-            _section("Todo", [f"- {t}" for t in self.todo]),
-            _section("Sources", [f"- {s}" for s in self.sources]),
+            _section("Dropped", self.dropped),
+            _section("Todo", self.todo),
+            _section("Sources", self.sources),
             f"Keywords: {', '.join(self.keywords)}" if self.keywords else "",
         ]
         return "\n\n".join(b for b in blocks if b)
 
 
 def _section(heading: str, lines: list[str]) -> str:
-    return f"{heading}:\n" + "\n".join(lines) if lines else ""
+    return f"{heading}:\n" + "\n".join(f"- {line}" for line in lines) if lines else ""
 
 
 class SessionMeta(BaseModel):
@@ -170,7 +178,7 @@ class SessionMeta(BaseModel):
 
     agent: Agent
     session_id: str = Field(min_length=1, description="The agent's own id of the Session")
-    folder: str = Field(min_length=1, description="Where the Session worked: the repository's root if it is in one")
+    folder: str = Field(min_length=1, description="The folder the Session was started in, where it can be resumed")
     branch: str = Field("", description="The git branch, if any")
     repo_url: str = Field("", description="The git remote's URL, if any, without credentials")
     model: str = Field("", description="The model running the Session")
@@ -371,6 +379,9 @@ class Item(ItemView):
     newest Version with the tags and embedding of its newest enriched one."""
 
     embedding: list[float] | None = None
+    # A Session's Decisions and Problems, one line each, so search can look in them on their own (D45).
+    decisions: list[str] = Field(default_factory=list)
+    problems: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_version(cls, version: Version, previous: "Item | None" = None) -> "Item":
@@ -415,8 +426,11 @@ class Item(ItemView):
         """A Thought or a Session, shown as its newest Version reads whatever that Version's status; tags and
         embedding come from the newest enriched Version."""
         e = enriched.enrichment if enriched else None
+        decisions, problems = [], []
         if current.kind is Kind.SESSION:
-            title, text = current.session.summary.title, current.session.summary.text()
+            summary = current.session.summary
+            title, text = summary.title, summary.text()
+            decisions, problems = [d.line() for d in summary.decisions], [p.line() for p in summary.problems]
         else:
             title, text = thought_title(current.title, current.text), current.text
         return cls(
@@ -430,6 +444,8 @@ class Item(ItemView):
             tags=annotations.tags(e.tags if e else []),
             taxonomy_version=e.taxonomy_version if e else 0,
             embedding=e.embedding if e else None,
+            decisions=decisions,
+            problems=problems,
             annotations=annotations,
         )
 
@@ -441,6 +457,8 @@ class Match(ItemView):
     """An Item a search found, with its score relative to the other results of that search."""
 
     score: float
+    # The Decisions and Problems of a Session Summary that contain the query's words.
+    matched: list[str] = Field(default_factory=list)
 
 
 class Tag(BaseModel):
@@ -458,6 +476,10 @@ class Tag(BaseModel):
     @property
     def name(self) -> str:
         return self.path.rpartition("/")[2]
+
+    @property
+    def is_project(self) -> bool:
+        return self.path == PROJECT_TAG or self.path.startswith(f"{PROJECT_TAG}/")
 
 
 class Taxonomy(BaseModel):

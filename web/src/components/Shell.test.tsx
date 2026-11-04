@@ -200,3 +200,26 @@ describe("narrower windows", () => {
     await waitFor(() => expect(titles()).toEqual(["Agents in practice"]));
   });
 });
+
+test("Sessions can be searched in one section, and a result shows the lines that matched", async () => {
+  const session = item({ id: "s1", media_type: "session", original_url: null, title: "Pinning", text: "Goal: pin it." });
+  const article = item({ id: "a1", title: "Pinning articles", summary: "About pins." });
+  const api = fakeApi({ items: [session, article], matched: { s1: ["Pin 3.9.0 Reason: stable"] } });
+  renderApp("/app/");
+  const list = within(await screen.findByRole("list", { name: "Items" }));
+  expect(list.getByText("Goal: pin it.")).toBeInTheDocument(); // a Session's text, where an article has its summary
+  expect(screen.queryByRole("group", { name: "Search in" })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Sessions" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Decisions" }));
+  await userEvent.type(screen.getByRole("searchbox", { name: "Search items" }), "pin");
+
+  expect(await screen.findByText("Pin 3.9.0 Reason: stable")).toBeInTheDocument();
+  expect(screen.getByText(/keywords only/)).toBeInTheDocument();
+  await waitFor(() => expect(lastListQuery(api.requests)?.get("section")).toBe("decisions"));
+  expect(window.location.search).toContain("section=decisions");
+
+  await userEvent.click(screen.getByRole("button", { name: "Articles" }));
+  await waitFor(() => expect(lastListQuery(api.requests)?.has("section")).toBe(false));
+  expect(screen.queryByRole("group", { name: "Search in" })).not.toBeInTheDocument();
+});

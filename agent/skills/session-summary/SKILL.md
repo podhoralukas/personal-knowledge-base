@@ -17,7 +17,7 @@ For a past Session, one the Owner names by id or wants to pick, follow [after-th
 | `session_id` | `$CLAUDE_CODE_SESSION_ID` | `$CODEX_SESSION_ID` |
 | `transcript_path` | `ls ~/.claude/projects/*/<id>.jsonl` | `ls ~/.codex/sessions/*/*/*/rollout-*-<id>.jsonl` |
 
-- `folder`: `git rev-parse --show-toplevel 2>/dev/null || pwd`
+- `folder`: where the Session was started, which is where it can be resumed: `grep -m1 -o '"cwd":"[^"]*"' <transcript_path>`, or `pwd` if there is no Transcript
 - `branch`: `git branch --show-current`
 - `repo_url`: `git remote get-url origin`, with any credentials in it removed
 - `model`: the model you are running as

@@ -5,7 +5,7 @@ import logging
 from pydantic import BaseModel
 
 from kb.llm import LLM
-from kb.models import DateRange, Kind, Match
+from kb.models import DateRange, Kind, Match, SessionSection
 from kb.storage import Storage
 
 log = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 class SearchResults(BaseModel):
     items: list[Match]
-    semantic: bool  # False when the query could not be embedded and only keywords were matched
+    semantic: bool  # False when only keywords were matched: the query could not be embedded, or `section` was given
 
 
 async def search(
@@ -23,7 +23,10 @@ async def search(
     tag: str | None = None,
     saved: DateRange | None = None,
     kind: Kind | None = None,
+    section: SessionSection | None = None,
 ) -> SearchResults:
+    if section is not None:  # the embedding reads the whole summary, so meaning cannot be narrowed to one section
+        return SearchResults(items=storage.search(text, None, tag, saved, kind, section), semantic=False)
     try:
         vector = await llm.embed(text)
     except Exception:

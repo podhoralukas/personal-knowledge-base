@@ -15,6 +15,7 @@ import { Dot, Empty, KindBadge, SectionLabel } from "./bits";
 import { ItemNote } from "./ItemNote";
 import { ItemTags } from "./ItemTags";
 import { ItemVersions } from "./ItemVersions";
+import { SessionView } from "./SessionView";
 import { ThoughtEdit } from "./ThoughtEdit";
 
 type Props = {
@@ -78,6 +79,8 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
 
   const it = item.data;
   const thought = it.media_type === "thought";
+  const session = it.media_type === "session";
+  const current = versions.data?.find((v) => v.id === it.current_version_id);
   const captureAgain = () =>
     edits.captureAgain.mutate(it.original_url!, {
       onSuccess: (accepted) => {
@@ -169,9 +172,11 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
         <Notice>Processing the new version. This updates by itself.</Notice>
       ) : (
         latest?.status === "failed" &&
-        (thought && latest.id === it.current_version_id ? (
+        ((thought || session) && latest.id === it.current_version_id ? (
           <Notice>
-            Not enriched: its Tags and search by meaning still reflect an earlier version.{" "}
+            {session
+              ? "Not embedded: search by meaning still reflects an earlier version. "
+              : "Not enriched: its Tags and search by meaning still reflect an earlier version. "}
             <button
               type="button"
               className="text-primary hover:underline"
@@ -182,7 +187,7 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
             </button>
           </Notice>
         ) : (
-          !thought && <Notice>The latest capture failed, so this shows an earlier version.</Notice>
+          !thought && !session && <Notice>The latest capture failed, so this shows an earlier version.</Notice>
         ))
       )}
 
@@ -190,7 +195,7 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
         editing ? (
           <ThoughtEdit
             item={it}
-            title={versions.data?.find((v) => v.id === it.current_version_id)?.title ?? ""}
+            title={current?.title ?? ""}
             edits={edits}
             onDone={() => setEditing(false)}
           />
@@ -199,6 +204,11 @@ function ItemView({ id, onOpen, onClose, onDeleted }: Props & { id: string }) {
             {it.text}
           </p>
         )
+      ) : session ? (
+        <>
+          {current?.session && <SessionView record={current.session} />}
+          <ItemNote item={it} edits={edits} />
+        </>
       ) : (
         <>
           <p className="font-serif text-[1.08rem] leading-[1.65]">{it.summary}</p>

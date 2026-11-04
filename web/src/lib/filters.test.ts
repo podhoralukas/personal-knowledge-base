@@ -9,4 +9,7 @@ test("filters survive the round trip through the URL", () => {
 
 test("an unknown Kind is ignored", () => {
   expect(readFilters("?kind=video").kind).toBeUndefined();
+  expect(readFilters("?kind=session&section=decisions").section).toBe("decisions");
+  expect(readFilters("?kind=session&section=goal").section).toBeUndefined();
+  expect(readFilters("?kind=article&section=decisions").section).toBeUndefined();
 });

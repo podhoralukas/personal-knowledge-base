@@ -102,6 +102,8 @@ ITEMS = {
             "summary": {"type": "text"},
             "key_points": {"type": "text"},
             "text": {"type": "text"},
+            "decisions": {"type": "text"},
+            "problems": {"type": "text"},
             "tags": {"type": "keyword"},
             "taxonomy_version": {"type": "integer"},
             "embedding": _EMBEDDING,

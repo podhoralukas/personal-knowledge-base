@@ -18,14 +18,16 @@ from kb.models import (
     SessionStatus,
     SessionSummary,
     ThoughtEdit,
+    ThoughtRequest,
     Version,
     VersionStatus,
 )
 from kb.normalize import session_item_id, thought_id
 from kb.notes import write_note
 from kb.pipeline.run import Pipeline
+from kb.pipeline.tag import Tagging
 from kb.storage.memory import MemoryStorage
-from kb.taxonomy import add_tag, retag_targets
+from kb.taxonomy import add_tag, retag_candidates, retag_targets
 from kb.versions import SessionReadOnly, delete_version
 
 T1 = datetime(2026, 11, 2, 9, 0, 0, tzinfo=UTC)
@@ -218,6 +220,24 @@ class TestPipeline:
         assert [i.id for i in storage.list_items_tagged_before(storage.get_taxonomy().version)] == [v.item_id]
         assert retag_targets(storage) == []
 
+    def test_a_session_is_not_reached_by_re_tagging_every_item(self, storage):
+        Pipeline(storage, FakeLLM()).session(record(), T1)
+        assert retag_targets(storage, every_item=True) == []
+
+    def test_the_item_keeps_decisions_and_problems_line_by_line(self, storage):
+        v = Pipeline(storage, FakeLLM()).session(record(), T1)
+        item = storage.get_item(v.item_id)
+        assert item.decisions == ["Pin OpenSearch 3.9.0 Reason: 3.4 closes readers early Rejected: Keep 3.4"]
+        assert item.problems == ["503 already_closed on .vec Cause: k-NN 3.4 bug Fix: pin 3.9.0"]
+
+    async def test_a_failed_embedding_can_be_retried(self, storage):
+        v = await Pipeline(storage, FailingLLM()).enrich(Pipeline(storage, FailingLLM()).session(record(), T1))
+        assert v.status is VersionStatus.FAILED
+        pipeline = Pipeline(storage, FakeLLM())
+        retried = await pipeline.enrich(pipeline.retry(v.item_id))
+        assert retried.status is VersionStatus.ENRICHED
+        assert storage.get_item(v.item_id).embedding is not None
+
     def test_a_session_version_cannot_be_deleted(self, storage):
         v = Pipeline(storage, FakeLLM()).session(record(), T1)
         with pytest.raises(SessionReadOnly, match="read-only"):
@@ -228,3 +248,23 @@ class TestPipeline:
         v = Pipeline(storage, FakeLLM()).session(record(), T1)
         item = write_note(storage, v.item_id, "Remember the pin")
         assert (item.annotations.notes, item.text) == ("Remember the pin", summary().text())
+
+
+class TestProjectsAndTheTagger:
+    async def test_the_tagger_is_not_offered_projects(self, storage):
+        add_tag(storage, "ai")
+        llm = FakeLLM([Tagging(tags=["ai"])])
+        pipeline = Pipeline(storage, llm)
+        thought = await pipeline.enrich(pipeline.write(ThoughtRequest(text="About agents")))
+        assert thought.enrichment.tags == ["ai"]
+        system, _ = llm.calls[-1]
+        assert "- ai" in system and "- project" not in system
+
+    def test_a_new_project_makes_no_item_a_retag_candidate(self, storage):
+        untagged = Item(
+            id="a", first_captured_at=T1, captured_at=T1, current_version_id="v", title="A", taxonomy_version=0
+        )
+        add_tag(storage, "project/other")
+        assert retag_candidates([untagged], storage.get_taxonomy()) == []
+        add_tag(storage, "ai")
+        assert retag_candidates([untagged], storage.get_taxonomy()) == [untagged.id]

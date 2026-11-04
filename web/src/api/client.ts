@@ -7,6 +7,9 @@ type Schemas = components["schemas"];
 export type Accepted = Schemas["Accepted"];
 export type Item = Schemas["ItemView"];
 export type Kind = Schemas["Kind"];
+export type SessionRecord = Schemas["SessionRecord"];
+export type SessionSection = Schemas["SessionSection"];
+export type SessionSummary = Schemas["SessionSummary"];
 export type Tag = Schemas["Tag"];
 export type Version = Schemas["Version"];
 

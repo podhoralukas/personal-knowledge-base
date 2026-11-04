@@ -72,24 +72,27 @@ export function useRetag() {
 }
 
 export type ItemList = {
-  items: Item[];
+  /** `matched`: the Decisions and Problems of a Session Summary that contain a search's words. */
+  items: (Item & { matched?: string[] })[];
   /** Best match first (a search), not newest first. */
   ranked: boolean;
-  /** False when a search matched keywords only, because the query could not be embedded. */
+  /** False when a search matched keywords only: the query could not be embedded, or it looked in one section. */
   semantic: boolean;
 };
 
 /** The Items the filters select; with a query, the search's best matches. */
 export function useItemList(filters: Filters, q: string) {
-  const { tag, untagged, kind, from, to } = filters;
+  const { tag, untagged, kind, section, from, to } = filters;
   return useQuery({
-    queryKey: [...keys.items, { tag, untagged, kind, from, to, q }],
+    queryKey: [...keys.items, { tag, untagged, kind, section, from, to, q }],
     queryFn: async (): Promise<ItemList> => {
       const dates = { kind, from, to };
       if (q) {
-        const found = unwrap(await api.GET("/search", { params: { query: { q, tag, ...dates } } }));
-        // Search has no untagged filter; the few results are filtered here.
-        const items = untagged ? found.items.filter((i) => !i.tags?.length) : found.items;
+        const found = unwrap(await api.GET("/search", { params: { query: { q, tag, section, ...dates } } }));
+        // Search has no untagged filter; the few results are filtered here, as the list leaves out Sessions.
+        const items = untagged
+          ? found.items.filter((i) => !i.tags?.length && (kind === "session" || i.media_type !== "session"))
+          : found.items;
         return { items, ranked: true, semantic: found.semantic };
       }
       const items = untagged

@@ -187,6 +187,27 @@ curl -X POST -H "Authorization: Bearer $API_TOKEN" http://localhost:8000/session
 
 `projects.yaml` in the same folder maps a session's folder to its Project, a tag under `project/`, to `none`, or to `ask` (decide on each summary). It fills up as you go: for a folder not in it the agent asks you, and the app records your answer and creates the tag.
 
+The skill in [agent/](agent/) tells the agent what to write. To install it, link it into your agent's skills folder from the root of your clone, and register the `kb` MCP server if you haven't yet. The link keeps the skill up to date as you pull.
+
+For Claude Code, with the server registered as above:
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s "$PWD/agent/skills/session-summary" ~/.claude/skills/session-summary
+```
+
+For Codex, with your `API_TOKEN` exported as `KB_API_TOKEN`:
+
+```bash
+mkdir -p ~/.codex/skills
+ln -s "$PWD/agent/skills/session-summary" ~/.codex/skills/session-summary
+codex mcp add kb --url http://localhost:8000/mcp --bearer-token-env-var KB_API_TOKEN
+```
+
+Start a new session, then ask "summarise this session", or "summarise session `<id>`" for a past one.
+
+A Session shows in the web app with its summary and the command to resume it. Under the Sessions kind, search can look in Decisions or Problems alone, as can the MCP `search` tool with `section`. That search goes by keywords and makes no embedding call, because the embedding reads the whole summary.
+
 ### HTTP API
 
 The full API is described in the OpenAPI (Swagger) spec at <http://localhost:8000/openapi.json>, browsable at <http://localhost:8000/docs>. Every endpoint needs `Authorization: Bearer $API_TOKEN`. The web app instead logs in through `POST /auth/login`, which sets an HttpOnly cookie; the API accepts that cookie only on requests that also carry the `X-KB-CSRF` header, which another website cannot add.

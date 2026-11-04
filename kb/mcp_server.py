@@ -24,6 +24,7 @@ from kb.models import (
     Match,
     SessionMeta,
     SessionRecord,
+    SessionSection,
     SessionSummary,
     ThoughtRequest,
     VersionStatus,
@@ -35,8 +36,8 @@ from kb.sessions import save_summary
 
 log = logging.getLogger(__name__)
 
-INSTRUCTIONS = """The Owner's personal knowledge base: articles they saved and Thoughts they wrote, tagged against \
-their own Taxonomy. Search it when the Owner asks what they have on a topic. Write a Thought only when the Owner \
+INSTRUCTIONS = """The Owner's personal knowledge base: articles they saved, Thoughts they wrote and summaries of their \
+agent Sessions, tagged against their own Taxonomy. Search it when the Owner asks what they have on a topic. Write a Thought only when the Owner \
 asks to save something. Save a Session Summary only when the Owner asks for one. Tag an Item only when the Owner \
 explicitly asks for that tag."""
 
@@ -53,7 +54,12 @@ class Found(BaseModel):
     note: str = Field(description="The Owner's own note on the article")
     summary: str = Field(description="An article's summary")
     key_points: list[str]
-    text: str = Field(description="A Thought's text; a long one ends with … and continues on its page")
+    text: str = Field(
+        description="A Thought's or a Session Summary's text; a long one ends with … and continues on its page"
+    )
+    matched: list[str] = Field(
+        description="The Decisions and Problems of a Session Summary that contain the query's words"
+    )
 
     @classmethod
     def of(cls, match: Match, base_url: str) -> "Found":
@@ -71,6 +77,7 @@ class Found(BaseModel):
             summary=match.summary,
             key_points=match.key_points,
             text=text if len(text) <= MCP_THOUGHT_TEXT_CHARS else text[:MCP_THOUGHT_TEXT_CHARS] + "…",
+            matched=match.matched,
         )
 
 
@@ -159,6 +166,10 @@ def mcp_server(pipeline: Callable[[], Pipeline], background: Background, summary
         kind: Kind | None = None,
         saved_from: Annotated[date | None, Field(description="Saved on or after this UTC day")] = None,
         saved_to: Annotated[date | None, Field(description="Saved on or before this UTC day")] = None,
+        section: Annotated[
+            SessionSection | None,
+            Field(description="Look only in this section of Session Summaries, by keywords alone"),
+        ] = None,
     ) -> SearchResult:
         """Search the Owner's knowledge base by keywords and meaning, as the search page does: the 20 best
         Items, narrowed by tag, kind and saved date when given. There is no relevance cutoff, so the last
@@ -170,7 +181,7 @@ def mcp_server(pipeline: Callable[[], Pipeline], background: Background, summary
             saved = DateRange(start=saved_from, end=saved_to)
         except ValidationError as exc:
             raise ToolError(exc.errors()[0]["msg"].removeprefix("Value error, "))
-        results = await hybrid_search(pipe.storage, pipe.llm, query, tag, saved, kind)
+        results = await hybrid_search(pipe.storage, pipe.llm, query, tag, saved, kind, section)
         base = base_url(ctx)
         return SearchResult(items=[Found.of(m, base) for m in results.items], semantic=results.semantic)
 

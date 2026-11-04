@@ -20,7 +20,7 @@ export function RetagPanel() {
   const retag = useRetag();
   const client = useQueryClient();
   const candidates = stats.data?.retag_candidates ?? 0;
-  const total = stats.data?.items ?? 0;
+  const total = stats.data?.retag_all ?? 0;
 
   useEffect(() => {
     if (!running) return;

@@ -1,26 +1,31 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import type { Kind } from "@/api/client";
+import type { Kind, SessionSection } from "@/api/client";
 
 /** What the Item list shows and which Item is open. Kept in the URL, so a reload or a link brings it back. */
 export type Filters = {
   tag?: string;
   untagged: boolean;
   kind?: Kind;
+  /** Search looks only in this section of Session Summaries; offered when the Kind is Sessions. */
+  section?: SessionSection;
   from?: string;
   to?: string;
   q: string;
   item?: string;
 };
 
-const KINDS: Kind[] = ["article", "thought"];
+const KINDS: Kind[] = ["article", "thought", "session"];
+const SECTIONS: SessionSection[] = ["decisions", "problems"];
 
 export function readFilters(search: string): Filters {
   const params = new URLSearchParams(search);
   const kind = params.get("kind") as Kind | null;
+  const section = params.get("section") as SessionSection | null;
   return {
     tag: params.get("tag") || undefined,
     untagged: params.has("untagged"),
     kind: kind && KINDS.includes(kind) ? kind : undefined,
+    section: kind === "session" && section && SECTIONS.includes(section) ? section : undefined,
     from: params.get("from") || undefined,
     to: params.get("to") || undefined,
     q: params.get("q") ?? "",
@@ -30,7 +35,7 @@ export function readFilters(search: string): Filters {
 
 export function writeFilters(filters: Filters): string {
   const params = new URLSearchParams();
-  for (const key of ["tag", "kind", "from", "to", "q", "item"] as const) {
+  for (const key of ["tag", "kind", "section", "from", "to", "q", "item"] as const) {
     if (filters[key]) params.set(key, filters[key]);
   }
   if (filters.untagged) params.set("untagged", "1");

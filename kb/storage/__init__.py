@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from kb.models import DateRange, Item, Kind, Match, Tag, Taxonomy, Version
+from kb.models import DateRange, Item, Kind, Match, SessionSection, Tag, Taxonomy, Version
 
 
 class Storage(Protocol):
@@ -26,7 +26,7 @@ class Storage(Protocol):
         """Delete the Item and all its Versions; False if there was nothing to delete."""
         ...
 
-    def list_item_ids(self) -> list[str]: ...
+    def list_item_ids(self, exclude: Kind | None = None) -> list[str]: ...
 
     def list_items_tagged_before(self, taxonomy_version: int) -> list[Item]:
         """Every Item tagged against an older taxonomy version, without embeddings."""
@@ -45,8 +45,9 @@ class Storage(Protocol):
         tag: str | None = None,
         saved: DateRange | None = None,
         kind: Kind | None = None,
+        section: SessionSection | None = None,
     ) -> list[Match]:
-        """Best match first, without embeddings. Keyword-only when `vector` is None."""
+        """Best match first, without embeddings. Keyword-only when `vector` is None; `section` looks only there."""
         ...
 
     def count_items(self, tags: list[str]) -> dict[str, int]:
@@ -54,7 +55,8 @@ class Storage(Protocol):
         ...
 
     def list_untagged_items(self, saved: DateRange | None = None, kind: Kind | None = None) -> list[Item]:
-        """Newest saved first, without embeddings."""
+        """Newest saved first, without embeddings. A Session's only Tag is its Project, so one without is not
+        waiting for Tags: Sessions are left out unless `kind` asks for them."""
         ...
 
     def get_taxonomy(self) -> Taxonomy: ...

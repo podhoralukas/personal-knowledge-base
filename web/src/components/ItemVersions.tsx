@@ -5,10 +5,12 @@ import type { useItemEdits } from "@/api/queries";
 import { stamp } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { pill, TagLabel } from "./bits";
+import { SessionSections } from "./SessionView";
 
 const STATUS_COLOR = { enriched: "text-primary", pending: "text-muted-foreground", failed: "text-destructive" };
 
-/** The Item's Versions, newest first, collapsed: details of each, and deleting any but the last. */
+/** The Item's Versions, newest first, collapsed: details of each, and deleting any but the last; a Session's are
+ * read-only (D42). */
 export function ItemVersions({
   item,
   versions,
@@ -53,6 +55,7 @@ export function ItemVersions({
                       {shown === v.id ? "hide" : "details"}
                     </button>
                     {list.length > 1 &&
+                      item.media_type !== "session" &&
                       (deleting === v.id ? (
                         <>
                           <button
@@ -93,8 +96,12 @@ function VersionDetails({ version }: { version: Version }) {
   const e = version.enrichment;
   return (
     <div className="grid gap-1.5 text-[0.85rem]">
-      <p className="font-medium">{e?.title || version.title || "(no title)"}</p>
-      <p className="whitespace-pre-wrap text-muted-foreground">{version.text ?? e?.summary}</p>
+      <p className="font-medium">{version.session?.summary.title || e?.title || version.title || "(no title)"}</p>
+      {version.session ? (
+        <SessionSections summary={version.session.summary} />
+      ) : (
+        <p className="whitespace-pre-wrap text-muted-foreground">{version.text ?? e?.summary}</p>
+      )}
       {version.error && <p className="text-destructive">{version.error}</p>}
       {e?.tags && e.tags.length > 0 && (
         <div className="flex flex-wrap gap-1">
