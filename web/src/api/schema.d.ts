@@ -508,15 +508,20 @@ export interface components {
         Channel: "extension" | "rss" | "manual" | "retag" | "written" | "mcp" | "session";
         /** Decision */
         Decision: {
-            /** Decision */
+            /**
+             * Decision
+             * @description What was decided, naming the exact thing it applies to
+             */
             decision: string;
             /**
              * Reason
+             * @description Why it was decided this way
              * @default
              */
             reason: string;
             /**
              * Rejected
+             * @description The alternative that was not taken
              * @default
              */
             rejected: string;
@@ -697,15 +702,20 @@ export interface components {
         };
         /** Problem */
         Problem: {
-            /** Symptom */
+            /**
+             * Symptom
+             * @description What was seen to go wrong, with the exact error string
+             */
             symptom: string;
             /**
              * Cause
+             * @description What turned out to cause it
              * @default
              */
             cause: string;
             /**
              * Fix
+             * @description What solved it
              * @default
              */
             fix: string;
@@ -730,27 +740,37 @@ export interface components {
          */
         SessionMeta: {
             agent: components["schemas"]["Agent"];
-            /** Session Id */
+            /**
+             * Session Id
+             * @description The agent's own id of the Session
+             */
             session_id: string;
-            /** Folder */
+            /**
+             * Folder
+             * @description Where the Session worked: the repository's root if it is in one
+             */
             folder: string;
             /**
              * Branch
+             * @description The git branch, if any
              * @default
              */
             branch: string;
             /**
              * Repo Url
+             * @description The git remote's URL, if any, without credentials
              * @default
              */
             repo_url: string;
             /**
              * Model
+             * @description The model running the Session
              * @default
              */
             model: string;
             /**
              * Transcript Path
+             * @description The agent's own file with the full Session
              * @default
              */
             transcript_path: string;
@@ -778,30 +798,54 @@ export interface components {
          * @description What the agent writes about a Session (D43). Empty sections are left out, so a small Session stays short.
          */
         SessionSummary: {
-            /** Title */
+            /**
+             * Title
+             * @description What the Session was about
+             */
             title: string;
+            /** @description Where the work ended: done, partial (more to do), blocked (waiting on something) or abandoned */
             status: components["schemas"]["SessionStatus"];
             /**
              * Goal
+             * @description What the Owner set out to do
              * @default
              */
             goal: string;
             /**
              * Outcome
+             * @description What exists or is known now that was not before
              * @default
              */
             outcome: string;
-            /** Decisions */
+            /**
+             * Decisions
+             * @description Choices made, each with its reason
+             */
             decisions?: components["schemas"]["Decision"][];
-            /** Problems */
+            /**
+             * Problems
+             * @description Things that went wrong and were worked out
+             */
             problems?: components["schemas"]["Problem"][];
-            /** Dropped */
+            /**
+             * Dropped
+             * @description Ideas or work given up on the way, and why
+             */
             dropped?: string[];
-            /** Todo */
+            /**
+             * Todo
+             * @description What is left to do
+             */
             todo?: string[];
-            /** Sources */
+            /**
+             * Sources
+             * @description Documents, links and tickets the work relied on
+             */
             sources?: string[];
-            /** Keywords */
+            /**
+             * Keywords
+             * @description Exact identifiers and error strings for keyword search: functions, config keys, commands
+             */
             keywords?: string[];
         };
         /** SessionsImported */

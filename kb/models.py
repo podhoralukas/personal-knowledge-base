@@ -103,9 +103,9 @@ class SessionStatus(StrEnum):
 
 
 class Decision(BaseModel):
-    decision: str
-    reason: str = ""
-    rejected: str = ""  # the alternative that was not taken
+    decision: str = Field(description="What was decided, naming the exact thing it applies to")
+    reason: str = Field("", description="Why it was decided this way")
+    rejected: str = Field("", description="The alternative that was not taken")
 
     def line(self) -> str:
         parts = [
@@ -117,9 +117,9 @@ class Decision(BaseModel):
 
 
 class Problem(BaseModel):
-    symptom: str
-    cause: str = ""
-    fix: str = ""
+    symptom: str = Field(description="What was seen to go wrong, with the exact error string")
+    cause: str = Field("", description="What turned out to cause it")
+    fix: str = Field("", description="What solved it")
 
     def line(self) -> str:
         parts = [self.symptom, f"Cause: {self.cause}" if self.cause else "", f"Fix: {self.fix}" if self.fix else ""]
@@ -129,16 +129,21 @@ class Problem(BaseModel):
 class SessionSummary(BaseModel):
     """What the agent writes about a Session (D43). Empty sections are left out, so a small Session stays short."""
 
-    title: str = Field(min_length=1, max_length=SESSION_TITLE_MAX_CHARS)
-    status: SessionStatus
-    goal: str = ""
-    outcome: str = ""
-    decisions: list[Decision] = Field(default_factory=list)
-    problems: list[Problem] = Field(default_factory=list)
-    dropped: list[str] = Field(default_factory=list)
-    todo: list[str] = Field(default_factory=list)
-    sources: list[str] = Field(default_factory=list)
-    keywords: list[str] = Field(default_factory=list)
+    title: str = Field(min_length=1, max_length=SESSION_TITLE_MAX_CHARS, description="What the Session was about")
+    status: SessionStatus = Field(
+        description="Where the work ended: done, partial (more to do), blocked (waiting on something) or abandoned"
+    )
+    goal: str = Field("", description="What the Owner set out to do")
+    outcome: str = Field("", description="What exists or is known now that was not before")
+    decisions: list[Decision] = Field(default_factory=list, description="Choices made, each with its reason")
+    problems: list[Problem] = Field(default_factory=list, description="Things that went wrong and were worked out")
+    dropped: list[str] = Field(default_factory=list, description="Ideas or work given up on the way, and why")
+    todo: list[str] = Field(default_factory=list, description="What is left to do")
+    sources: list[str] = Field(default_factory=list, description="Documents, links and tickets the work relied on")
+    keywords: list[str] = Field(
+        default_factory=list,
+        description="Exact identifiers and error strings for keyword search: functions, config keys, commands",
+    )
 
     def text(self) -> str:
         """The sections as the Item's text, each present one under its heading; this is what search and
@@ -164,12 +169,12 @@ class SessionMeta(BaseModel):
     """Where a Session ran and how to get back to it, as the agent reports it (D56)."""
 
     agent: Agent
-    session_id: str = Field(min_length=1)
-    folder: str = Field(min_length=1)
-    branch: str = ""
-    repo_url: str = ""
-    model: str = ""
-    transcript_path: str = ""
+    session_id: str = Field(min_length=1, description="The agent's own id of the Session")
+    folder: str = Field(min_length=1, description="Where the Session worked: the repository's root if it is in one")
+    branch: str = Field("", description="The git branch, if any")
+    repo_url: str = Field("", description="The git remote's URL, if any, without credentials")
+    model: str = Field("", description="The model running the Session")
+    transcript_path: str = Field("", description="The agent's own file with the full Session")
 
 
 class SessionRecord(BaseModel):
